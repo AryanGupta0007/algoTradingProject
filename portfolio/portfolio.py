@@ -40,38 +40,97 @@ class Portfolio:
         old_quantity = position.quantity
         old_avg_price = position.average_price
         
-        # Update position
+        # Update position with full long/short support
         if fill.side == OrderSide.BUY:
-            position.add_quantity(fill.quantity, fill.price)
+            # Cash move (buy -> cash out)
             self.cash -= (fill.price * fill.quantity + fill.commission)
-            # Update stop loss and take profit from order
+
+            if position.quantity >= 0:
+                # Increase/create long
+                new_qty = position.quantity + fill.quantity
+                if new_qty > 0:
+                    total_cost = (position.average_price * position.quantity) + (fill.price * fill.quantity)
+                    position.average_price = total_cost / new_qty
+                else:
+                    position.average_price = 0.0
+                position.quantity = new_qty
+            else:
+                # Cover short
+                short_qty = abs(position.quantity)
+                cover = min(fill.quantity, short_qty)
+                # Realized PnL from covering short
+                realized_pnl = (position.average_price - fill.price) * cover
+                self.total_realized_pnl += realized_pnl
+                position.quantity += cover  # moves toward zero
+
+                remaining = fill.quantity - cover
+                if remaining > 0:
+                    # Flip to long with remaining buy
+                    position.quantity = remaining
+                    position.average_price = fill.price
+                if position.quantity == 0:
+                    position.average_price = 0.0
+
+            # Update stops/strategy tag from order
             if order:
-                if order.stop_loss:
+                if order.stop_loss is not None:
                     position.stop_loss = order.stop_loss
-                if order.take_profit:
+                if order.take_profit is not None:
                     position.take_profit = order.take_profit
                 if order.strategy_id:
                     position.strategy_id = order.strategy_id
-        else:
-            position.reduce_quantity(fill.quantity, fill.price)
+        else:  # SELL
+            # Cash move (sell -> cash in)
             self.cash += (fill.price * fill.quantity - fill.commission)
-            # Clear stop loss and take profit if position is closed
+
+            if position.quantity <= 0:
+                # Increase/create short
+                if position.quantity < 0:
+                    # Increasing existing short
+                    total_cost = (position.average_price * abs(position.quantity)) + (fill.price * fill.quantity)
+                    new_abs_qty = abs(position.quantity) + fill.quantity
+                    position.average_price = total_cost / new_abs_qty
+                    position.quantity = -new_abs_qty
+                else:
+                    # Open fresh short
+                    position.quantity = -fill.quantity
+                    position.average_price = fill.price
+                # Update stops/strategy tag from order when resulting position is short
+                if order:
+                    if order.stop_loss is not None:
+                        position.stop_loss = order.stop_loss
+                    if order.take_profit is not None:
+                        position.take_profit = order.take_profit
+                    if order.strategy_id:
+                        position.strategy_id = order.strategy_id
+            else:
+                # Reduce/close long
+                close = min(fill.quantity, position.quantity)
+                realized_pnl = (fill.price - position.average_price) * close
+                self.total_realized_pnl += realized_pnl
+                position.quantity -= close
+                remaining = fill.quantity - close
+                if remaining > 0:
+                    # Flip to short with remaining sell
+                    position.quantity = -remaining
+                    position.average_price = fill.price
+                    if order:
+                        if order.stop_loss is not None:
+                            position.stop_loss = order.stop_loss
+                        if order.take_profit is not None:
+                            position.take_profit = order.take_profit
+                        if order.strategy_id:
+                            position.strategy_id = order.strategy_id
+                elif position.quantity == 0:
+                    position.average_price = 0.0
+
+            # Clear stops if flat
             if position.is_flat():
                 position.stop_loss = None
                 position.take_profit = None
         
         # Update realized P&L if position was closed or reversed
-        if old_quantity != 0:
-            if old_quantity > 0 and fill.side == OrderSide.SELL:
-                # Closing or reducing long position
-                closed_quantity = min(fill.quantity, old_quantity)
-                realized_pnl = (fill.price - old_avg_price) * closed_quantity
-                self.total_realized_pnl += realized_pnl
-            elif old_quantity < 0 and fill.side == OrderSide.BUY:
-                # Closing or reducing short position
-                closed_quantity = min(fill.quantity, abs(old_quantity))
-                realized_pnl = (old_avg_price - fill.price) * closed_quantity
-                self.total_realized_pnl += realized_pnl
+        # (Handled inline during adjustment above to support flips accurately)
         
         # Update commission
         self.total_commission += fill.commission

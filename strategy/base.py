@@ -72,6 +72,11 @@ class BaseStrategy(ABC):
         self.current_ohlcv: Optional[OHLCVData] = None
         self.position_entry_price: Optional[float] = None
         self.position_entry_time: Optional[datetime] = None
+        # Track current position side for exit decisions (True=LONG, False=SHORT, None=flat)
+        self.position_is_long: Optional[bool] = None
+        # Internal: strategies can set this before returning True from _check_entry_conditions
+        # to specify whether to enter LONG or SHORT on this signal.
+        self._entry_signal_side: Optional[str] = None  # 'LONG' or 'SHORT'
         
         # Callbacks
         self.order_callback: Optional[Callable] = None
@@ -165,7 +170,12 @@ class BaseStrategy(ABC):
                 self._log(f"Checking entry conditions (has_position=False)", "DEBUG")
                 if self._check_entry_conditions():
                     self._log(f"Entry conditions met, generating entry order", "INFO")
-                    self._enter_position()
+                    # Determine side for entry (default LONG if unspecified)
+                    from order.order import OrderSide
+                    side = OrderSide.BUY if (self._entry_signal_side != 'SHORT') else OrderSide.SELL
+                    self._enter_position(side)
+                    # Reset signal side after use
+                    self._entry_signal_side = None
                 else:
                     self._log(f"Entry conditions not met, waiting", "DEBUG")
             else:
@@ -569,20 +579,21 @@ class BaseStrategy(ABC):
         
         return None
     
-    def _enter_position(self):
-        """Enter a position"""
+    def _enter_position(self, side: OrderSide):
+        """Enter a position with the specified side (BUY=LONG, SELL=SHORT)."""
         if self.current_price is None:
             self._log("Cannot enter position: current_price is None", "WARNING")
             return
         
-        stop_loss = self._get_stop_loss()
-        take_profit = self._get_take_profit()
+        # Compute SL/TP for the chosen side; strategies can override side-aware hooks
+        stop_loss = self._get_stop_loss_for_side(side)
+        take_profit = self._get_take_profit_for_side(side)
         
-        self._log(f"Generating entry order: symbol={self.symbol}, quantity={self.quantity}, price={self.current_price:.2f}, stop_loss={stop_loss}, take_profit={take_profit}", "INFO")
+        self._log(f"Generating entry order: symbol={self.symbol}, side={'LONG' if side.name=='BUY' else 'SHORT'}, quantity={self.quantity}, price={self.current_price:.2f}, stop_loss={stop_loss}, take_profit={take_profit}", "INFO")
         
         order = Order(
             symbol=self.symbol,
-            side=OrderSide.BUY,  # Default to long, can be overridden
+            side=side,
             quantity=self.quantity,
             order_type=OrderType.MARKET,
             strategy_id=self.strategy_id,
@@ -597,6 +608,8 @@ class BaseStrategy(ABC):
         else:
             self._log("No order callback set, cannot submit order", "ERROR")
         
+        # Optimistically set side until engine confirms via fills
+        self.position_is_long = (side == OrderSide.BUY)
         self._log(f"Entry signal generated: {order.to_dict()}", "INFO")
     
     def _exit_position(self, reason: ExitReason):
@@ -620,9 +633,11 @@ class BaseStrategy(ABC):
         
         # Get current position quantity (this should come from portfolio)
         # For now, assume we exit the full quantity
+        # Decide exit side opposite to current position
+        exit_side = OrderSide.SELL if (self.position_is_long is not False) else OrderSide.BUY
         order = Order(
             symbol=self.symbol,
-            side=OrderSide.SELL,
+            side=exit_side,
             quantity=self.quantity,
             order_type=OrderType.MARKET,
             strategy_id=self.strategy_id
@@ -637,6 +652,21 @@ class BaseStrategy(ABC):
         
         self._log(f"Exit signal generated: {reason.value}, Order: {order.to_dict()}", "INFO")
         # Note: has_position will be updated by engine after fill is processed
+
+    # ---- Side-aware SL/TP hooks (can be overridden by strategies) ----
+    def _get_stop_loss_for_side(self, side: OrderSide) -> Optional[float]:
+        """Default side-aware SL: fallback to legacy _get_stop_loss()."""
+        try:
+            return self._get_stop_loss()
+        except Exception:
+            return None
+    
+    def _get_take_profit_for_side(self, side: OrderSide) -> Optional[float]:
+        """Default side-aware TP: fallback to legacy _get_take_profit()."""
+        try:
+            return self._get_take_profit()
+        except Exception:
+            return None
     
     def _get_stop_loss(self) -> Optional[float]:
         """Get stop loss price from exit conditions"""

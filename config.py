@@ -4,6 +4,8 @@ Configuration settings for the paper trading system.
 from dataclasses import dataclass
 from typing import Optional
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 @dataclass
@@ -31,7 +33,7 @@ class TradingConfig:
     db_path: str = "trading.db"  # SQLite database path
     enable_db: bool = True  # Enable database persistence
     save_market_data: bool = False  # Save market data to database (can be large)
-    fake_data_interval: int = 15  # Fake data feed interval in seconds (default: 60)
+    fake_data_interval: int = 0  # Fake data feed interval in seconds (default: 60)
     portfolio_snapshot_interval: int = 5  # Portfolio snapshot interval in seconds
 
 
@@ -44,11 +46,12 @@ class Config:
     def __post_init__(self):
         if self.icici is None:
             self.icici = ICICIConfig(
-                api_key=os.getenv("ICICI_API_KEY"),
-                api_secret=os.getenv("ICICI_API_SECRET"),
-                session_token=os.getenv("ICICI_SESSION_TOKEN"),
+                api_key=os.getenv("BREEZE_API_KEY"),
+                api_secret=os.getenv("BREEZE_SECRET"),
+                session_token=os.getenv("MY_API_SESSION"),
                 enabled=os.getenv("ICICI_ENABLED", "False").lower() == "true"
             )
         if self.trading is None:
             self.trading = TradingConfig()
 
+             

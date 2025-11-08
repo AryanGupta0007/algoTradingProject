@@ -4,7 +4,14 @@ Main entry point for the paper trading system.
 import time
 from config import Config
 from engine import TradingEngine
-from strategy import MovingAverageCrossoverStrategy, RSIStrategy
+from strategy import (
+    MovingAverageCrossoverStrategy,
+    RSIStrategy,
+    ADXSignalStrategy,
+    EMACrossoverStrategy,
+    ADXDMISupertrendSignalStrategy,
+    OpenRangeBreakoutSignalStrategy,
+)
 import logging
 
 # Configure logging
@@ -37,7 +44,7 @@ def main():
     engine = TradingEngine(config)
     
     # Define symbols to trade
-    symbols = ["RELIANCE", "TCS", "INFY"]
+    symbols = ["RELIANCE", "ADANIENT", "ADANIPORTS", "ICICIBANK", "ASIANPAINT"]
     
     # Initialize data feed
     engine.initialize_data_feed(symbols)
@@ -70,6 +77,55 @@ def main():
         )
         engine.add_strategy(rsi_strategy)
         logger.info(f"Added RSI strategy for {symbol}")
+
+        # Add ADX momentum strategy (LONG/SHORT with ATR-based SL/TP)
+        adx_strategy = ADXSignalStrategy(
+            strategy_id=f"ADX_SIG_{symbol}",
+            symbol=symbol,
+            adx_period=14,
+            atr_mult_tp=4.0,
+            atr_mult_sl=2.0,
+            quantity=5,
+        )
+        engine.add_strategy(adx_strategy)
+        logger.info(f"Added ADX Signal strategy for {symbol}")
+
+        # Add EMA crossover strategy (LONG/SHORT)
+        ema_strategy = EMACrossoverStrategy(
+            strategy_id=f"EMA_X_{symbol}",
+            symbol=symbol,
+            short=5,
+            long=20,
+            quantity=5,
+        )
+        engine.add_strategy(ema_strategy)
+        logger.info(f"Added EMA Crossover strategy for {symbol}")
+
+        # Add ADX/DMI + Supertrend hybrid strategy
+        adx_st_strategy = ADXDMISupertrendSignalStrategy(
+            strategy_id=f"ADX_ST_{symbol}",
+            symbol=symbol,
+            adx_period=7,
+            supertrend_period=7,
+            supertrend_multiplier=2.0,
+            atr_period=7,
+            atr_lookback=30,
+            risk_reward=2.0,
+            quantity=5,
+        )
+        engine.add_strategy(adx_st_strategy)
+        logger.info(f"Added ADX+DMI Supertrend strategy for {symbol}")
+
+        # Add Open Range Breakout strategy
+        orb_strategy = OpenRangeBreakoutSignalStrategy(
+            strategy_id=f"ORB_{symbol}",
+            symbol=symbol,
+            tp_mult=4.0,
+            sl_lookback=6,
+            quantity=5,
+        )
+        engine.add_strategy(orb_strategy)
+        logger.info(f"Added Open Range Breakout strategy for {symbol}")
     
     try:
         # Start trading engine

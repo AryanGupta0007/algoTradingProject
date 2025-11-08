@@ -180,6 +180,7 @@ class DatabaseManager:
                 order_id TEXT NOT NULL,
                 symbol TEXT NOT NULL,
                 strategy_id TEXT NOT NULL,
+                trade_type TEXT NOT NULL,
                 status TEXT NOT NULL,
                 entry_time TEXT NOT NULL,
                 entry_price REAL NOT NULL,
@@ -191,6 +192,11 @@ class DatabaseManager:
                 UNIQUE(order_id)
             )
         """)
+        # Backward-compat: attempt to add trade_type if table existed without it
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN trade_type TEXT")
+        except Exception:
+            pass
         
         # Create indexes for better query performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_strategy ON orders(strategy_id)")
@@ -558,6 +564,7 @@ class DatabaseManager:
     
     # Trades API
     def create_trade(self, *, order_id: str, symbol: str, strategy_id: str,
+                     trade_type: str,
                      entry_time: str, entry_price: float,
                      stop_loss: Optional[float] = None, take_profit: Optional[float] = None,
                      ltp: Optional[float] = None):
@@ -567,11 +574,11 @@ class DatabaseManager:
             cursor.execute(
                 """
                 INSERT OR IGNORE INTO trades (
-                    order_id, symbol, strategy_id, status, entry_time, entry_price,
+                    order_id, symbol, strategy_id, trade_type, status, entry_time, entry_price,
                     exit_time, exit_price, stop_loss, take_profit, ltp
-                ) VALUES (?, ?, ?, 'open', ?, ?, NULL, NULL, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, 'open', ?, ?, NULL, NULL, ?, ?, ?)
                 """,
-                (order_id, symbol, strategy_id, entry_time, entry_price, stop_loss, take_profit, ltp),
+                (order_id, symbol, strategy_id, trade_type, entry_time, entry_price, stop_loss, take_profit, ltp),
             )
             self.conn.commit()
     

@@ -2,7 +2,14 @@
 Trading strategies.
 """
 from .base import BaseStrategy, EntryCondition, ExitCondition, ExitReason
-from .example_strategies import MovingAverageCrossoverStrategy, RSIStrategy
+from .example_strategies import (
+    MovingAverageCrossoverStrategy,
+    RSIStrategy,
+    ADXSignalStrategy,
+    EMACrossoverStrategy,
+    ADXDMISupertrendSignalStrategy,
+    OpenRangeBreakoutSignalStrategy,
+)
 
 __all__ = [
     'BaseStrategy',
@@ -10,6 +17,10 @@ __all__ = [
     'ExitCondition',
     'ExitReason',
     'MovingAverageCrossoverStrategy',
-    'RSIStrategy'
+    'RSIStrategy',
+    'ADXSignalStrategy',
+    'EMACrossoverStrategy',
+    'ADXDMISupertrendSignalStrategy',
+    'OpenRangeBreakoutSignalStrategy',
 ]
 

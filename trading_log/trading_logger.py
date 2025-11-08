@@ -188,8 +188,9 @@ class TradingLogger:
         self._write_structured_log(log_entry)
         sym = trade_data.get('symbol')
         sid = trade_data.get('strategy_id')
+        ttype = trade_data.get('trade_type')
         price = trade_data.get('entry_price')
-        self.logger.info(f"Trade open: symbol={sym}, strategy={sid}, entry_price={price}")
+        self.logger.info(f"Trade open: type={ttype}, symbol={sym}, strategy={sid}, entry_price={price}")
     
     def log_trade_ltp_update(self, symbol: str, ltp: float):
         """Log LTP update applied to open trades for a symbol (structured)."""
@@ -211,8 +212,9 @@ class TradingLogger:
         self._write_structured_log(log_entry)
         sym = trade_data.get('symbol')
         sid = trade_data.get('strategy_id')
+        ttype = trade_data.get('trade_type')
         price = trade_data.get('exit_price')
-        self.logger.info(f"Trade close: symbol={sym}, strategy={sid}, exit_price={price}")
+        self.logger.info(f"Trade close: type={ttype}, symbol={sym}, strategy={sid}, exit_price={price}")
     
     def log_portfolio_summary(self, summary: Dict[str, Any]):
         """Log a concise portfolio summary line to trading.log.

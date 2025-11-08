@@ -563,10 +563,12 @@ class TradingEngine:
                 # Opening a new position from flat -> non-flat
                 if prev_qty == 0 and new_qty != 0:
                     entry_price = position_after.average_price if position_after else fill.price
+                    trade_type = 'LONG' if (position_after and position_after.is_long()) else 'SHORT'
                     self.db_manager.create_trade(
                         order_id=order.order_id,
                         symbol=fill.symbol,
                         strategy_id=order.strategy_id or "",
+                        trade_type=trade_type,
                         entry_time=fill.timestamp.isoformat() if hasattr(fill.timestamp, 'isoformat') else str(fill.timestamp),
                         entry_price=float(entry_price),
                         stop_loss=position_after.stop_loss if position_after else None,
@@ -580,6 +582,7 @@ class TradingEngine:
                             'order_id': order.order_id,
                             'symbol': fill.symbol,
                             'strategy_id': order.strategy_id or "",
+                            'trade_type': trade_type,
                             'entry_time': fill.timestamp,
                             'entry_price': float(entry_price),
                             'stop_loss': position_after.stop_loss if position_after else None,
@@ -604,6 +607,7 @@ class TradingEngine:
                             'order_id': order.order_id,
                             'symbol': fill.symbol,
                             'strategy_id': order.strategy_id or "",
+                            'trade_type': 'LONG' if (prev_position and prev_position.quantity > 0) else 'SHORT',
                             'exit_time': fill.timestamp,
                             'exit_price': float(fill.price),
                         })
@@ -635,11 +639,16 @@ class TradingEngine:
                 strategy.position_entry_price = position.average_price
                 if position.opened_at:
                     strategy.position_entry_time = position.opened_at
+                try:
+                    strategy.position_is_long = position.is_long()
+                except Exception:
+                    pass
                 logger.info(f"[Engine] Strategy {order.strategy_id} position updated: has_position=True, entry_price={position.average_price:.2f}")
             else:
                 strategy.has_position = False
                 strategy.position_entry_price = None
                 strategy.position_entry_time = None
+                strategy.position_is_long = None
                 logger.info(f"[Engine] Strategy {order.strategy_id} position updated: has_position=False (position closed)")
         
         # Update portfolio metrics
@@ -735,6 +744,10 @@ class TradingEngine:
                     strategy.position_entry_price = position.average_price
                     if position.opened_at:
                         strategy.position_entry_time = position.opened_at
+                    try:
+                        strategy.position_is_long = position.is_long()
+                    except Exception:
+                        pass
                     
                     # Log position state change
                     if not old_has_position:
