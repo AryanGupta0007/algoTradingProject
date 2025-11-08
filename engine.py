@@ -51,6 +51,12 @@ class TradingEngine:
         if self.config.trading.enable_db:
             self.db_manager = DatabaseManager(db_path=self.config.trading.db_path)
             logger.info(f"Database manager initialized: {self.config.trading.db_path}")
+            # Load any existing positions/portfolio state from DB at startup
+            try:
+                self.load_from_database()
+                logger.info("Loaded existing portfolio state from database on initialization")
+            except Exception:
+                logger.exception("Failed to load existing portfolio state from database on initialization")
         
         # Strategy management
         self.strategies: Dict[str, BaseStrategy] = {}
@@ -191,6 +197,14 @@ class TradingEngine:
         for strategy in self.strategies.values():
             strategy.start()
         
+        # After starting strategies, sync their position state from loaded portfolio
+        try:
+            for sym, pos in list(self.portfolio.positions.items()):
+                if pos and not pos.is_flat():
+                    self._sync_strategy_positions(sym)
+        except Exception:
+            logger.exception("Failed syncing strategy positions from loaded portfolio")
+
         # Subscribe to unique symbols only
         if unique_symbols:
             self.data_feed.subscribe(unique_symbols, self._on_market_data)
@@ -342,6 +356,17 @@ class TradingEngine:
             self.ltp[data.symbol] = data.close
             self.ltp_timestamp[data.symbol] = data.timestamp
             logger.debug(f"[Engine] Updated LTP for {data.symbol}: {data.close:.2f}")
+            # Update trades LTP in DB
+            if self.db_manager:
+                try:
+                    self.db_manager.update_trades_ltp(data.symbol, data.close)
+                except Exception as e:
+                    logger.error(f"Error updating trades LTP: {e}")
+            # Structured trade LTP log
+            try:
+                self.trading_logger.log_trade_ltp_update(data.symbol, float(data.close))
+            except Exception:
+                logger.debug("Failed to log trade LTP update (OHLCV)")
             
             # Log OHLCV data
             self.trading_logger.log_ohlcv(data.to_dict())
@@ -417,6 +442,17 @@ class TradingEngine:
             self.ltp[data.symbol] = data.price
             self.ltp_timestamp[data.symbol] = data.timestamp
             logger.debug(f"[Engine] Updated LTP for {data.symbol}: {data.price:.2f}")
+            # Update trades LTP in DB
+            if self.db_manager:
+                try:
+                    self.db_manager.update_trades_ltp(data.symbol, data.price)
+                except Exception as e:
+                    logger.error(f"Error updating trades LTP: {e}")
+            # Structured trade LTP log
+            try:
+                self.trading_logger.log_trade_ltp_update(data.symbol, float(data.price))
+            except Exception:
+                logger.debug("Failed to log trade LTP update (Tick)")
             
             # Log tick data
             self.trading_logger.log_tick(data.to_dict())
@@ -489,6 +525,10 @@ class TradingEngine:
         old_cash = self.portfolio.cash
         logger.debug(f"[Engine] Portfolio before fill: cash={old_cash:.2f}, realized_pnl={old_realized:.2f}")
         
+        # Capture previous position qty to detect open/close transitions
+        prev_position = self.portfolio.get_position(fill.symbol)
+        prev_qty = prev_position.quantity if prev_position else 0
+        
         # Update portfolio
         logger.debug(f"[Engine] Processing fill in portfolio")
         self.portfolio.process_fill(fill, order)
@@ -513,6 +553,64 @@ class TradingEngine:
                 logger.debug(f"[Engine] Fill/order/position persisted transactionally")
             except Exception as e:
                 logger.error(f"Error persisting fill/order/position transactionally: {e}")
+        
+        # After state persistence, create/close trade records
+        if self.db_manager and order:
+            try:
+                # Current position after fill
+                position_after = self.portfolio.get_position(fill.symbol)
+                new_qty = position_after.quantity if position_after else 0
+                # Opening a new position from flat -> non-flat
+                if prev_qty == 0 and new_qty != 0:
+                    entry_price = position_after.average_price if position_after else fill.price
+                    self.db_manager.create_trade(
+                        order_id=order.order_id,
+                        symbol=fill.symbol,
+                        strategy_id=order.strategy_id or "",
+                        entry_time=fill.timestamp.isoformat() if hasattr(fill.timestamp, 'isoformat') else str(fill.timestamp),
+                        entry_price=float(entry_price),
+                        stop_loss=position_after.stop_loss if position_after else None,
+                        take_profit=position_after.take_profit if position_after else None,
+                        ltp=position_after.current_price if position_after else fill.price,
+                    )
+                    logger.info(f"[Engine] Trade opened recorded for {fill.symbol} (order_id={order.order_id})")
+                    # Log trade open
+                    try:
+                        self.trading_logger.log_trade_open({
+                            'order_id': order.order_id,
+                            'symbol': fill.symbol,
+                            'strategy_id': order.strategy_id or "",
+                            'entry_time': fill.timestamp,
+                            'entry_price': float(entry_price),
+                            'stop_loss': position_after.stop_loss if position_after else None,
+                            'take_profit': position_after.take_profit if position_after else None,
+                            'ltp': position_after.current_price if position_after else float(fill.price),
+                        })
+                    except Exception:
+                        logger.debug("Failed to log trade open")
+                # Closing position from non-flat -> flat
+                elif prev_qty != 0 and new_qty == 0:
+                    self.db_manager.close_latest_trade(
+                        symbol=fill.symbol,
+                        strategy_id=order.strategy_id or "",
+                        exit_time=fill.timestamp.isoformat() if hasattr(fill.timestamp, 'isoformat') else str(fill.timestamp),
+                        exit_price=float(fill.price),
+                        status='closed'
+                    )
+                    logger.info(f"[Engine] Trade closed recorded for {fill.symbol} (order_id={order.order_id})")
+                    # Log trade close
+                    try:
+                        self.trading_logger.log_trade_close({
+                            'order_id': order.order_id,
+                            'symbol': fill.symbol,
+                            'strategy_id': order.strategy_id or "",
+                            'exit_time': fill.timestamp,
+                            'exit_price': float(fill.price),
+                        })
+                    except Exception:
+                        logger.debug("Failed to log trade close")
+            except Exception as e:
+                logger.error(f"Error updating trades table: {e}")
         
         # Calculate trade P&L (change in realized P&L)
         pnl = new_realized - old_realized
@@ -799,6 +897,7 @@ class TradingEngine:
             'get_strategy_metrics': self.db_manager.get_strategy_metrics,
             'get_equity_history': self.db_manager.get_equity_history,
             'get_market_data': self.db_manager.get_market_data,
+            'get_trades': self.db_manager.get_trades,
             'get_portfolio_state': self.db_manager.get_portfolio_state
         }
 

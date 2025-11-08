@@ -173,6 +173,25 @@ class DatabaseManager:
             )
         """)
         
+        # Trades table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+                trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                strategy_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                entry_time TEXT NOT NULL,
+                entry_price REAL NOT NULL,
+                exit_time TEXT,
+                exit_price REAL,
+                stop_loss REAL,
+                take_profit REAL,
+                ltp REAL,
+                UNIQUE(order_id)
+            )
+        """)
+        
         # Create indexes for better query performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_strategy ON orders(strategy_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_symbol ON orders(symbol)")
@@ -188,6 +207,8 @@ class DatabaseManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_equity_history_timestamp ON equity_history(timestamp)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_market_data_symbol ON market_data(symbol)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_market_data_timestamp ON market_data(timestamp)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_symbol_status ON trades(symbol, status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_trades_strategy_status ON trades(strategy_id, status)")
         
         self.conn.commit()
         logger.info("Database tables created successfully")
@@ -530,6 +551,80 @@ class DatabaseManager:
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
 
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]
+    
+    # Trades API
+    def create_trade(self, *, order_id: str, symbol: str, strategy_id: str,
+                     entry_time: str, entry_price: float,
+                     stop_loss: Optional[float] = None, take_profit: Optional[float] = None,
+                     ltp: Optional[float] = None):
+        """Insert a new trade row with status 'open'."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO trades (
+                    order_id, symbol, strategy_id, status, entry_time, entry_price,
+                    exit_time, exit_price, stop_loss, take_profit, ltp
+                ) VALUES (?, ?, ?, 'open', ?, ?, NULL, NULL, ?, ?, ?)
+                """,
+                (order_id, symbol, strategy_id, entry_time, entry_price, stop_loss, take_profit, ltp),
+            )
+            self.conn.commit()
+    
+    def update_trades_ltp(self, symbol: str, ltp: float):
+        """Update LTP for all open trades of a symbol."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                UPDATE trades
+                SET ltp = ?
+                WHERE symbol = ? AND status = 'open'
+                """,
+                (ltp, symbol),
+            )
+            self.conn.commit()
+    
+    def close_latest_trade(self, *, symbol: str, strategy_id: str, exit_time: str,
+                           exit_price: float, status: str = 'closed'):
+        """Close the most recent open trade for a given symbol+strategy."""
+        with self._lock:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                UPDATE trades
+                SET status = ?, exit_time = ?, exit_price = ?
+                WHERE trade_id = (
+                    SELECT trade_id FROM trades
+                    WHERE symbol = ? AND strategy_id = ? AND status = 'open'
+                    ORDER BY entry_time DESC
+                    LIMIT 1
+                )
+                """,
+                (status, exit_time, exit_price, symbol, strategy_id),
+            )
+            self.conn.commit()
+    
+    def get_trades(self, *, symbol: Optional[str] = None, strategy_id: Optional[str] = None,
+                   status: Optional[str] = None, limit: int = 200) -> List[Dict[str, Any]]:
+        """Fetch trades with optional filters."""
+        query = "SELECT * FROM trades WHERE 1=1"
+        params: List[Any] = []
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if strategy_id:
+            query += " AND strategy_id = ?"
+            params.append(strategy_id)
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        query += " ORDER BY entry_time DESC LIMIT ?"
+        params.append(limit)
         with self._lock:
             cursor = self.conn.cursor()
             cursor.execute(query, params)

@@ -308,6 +308,9 @@ class PortfolioMetrics:
                         if hasattr(self, '_snapshot_logger') and self._snapshot_logger is not None:
                             # Use same structured log type as portfolio_update
                             self._snapshot_logger.log_portfolio_update(snapshot)
+                            # Emit a concise human-readable portfolio summary line
+                            if hasattr(self._snapshot_logger, 'log_portfolio_summary'):
+                                self._snapshot_logger.log_portfolio_summary(snapshot.get('summary', {}))
                         else:
                             # Fallback to printing
                             print(f"Portfolio snapshot: {snapshot}")

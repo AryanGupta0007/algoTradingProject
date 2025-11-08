@@ -80,10 +80,44 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
         
         if not fast_sma or not slow_sma:
             self._log("Missing SMA indicators", "DEBUG")
+            if self.trading_logger:
+                try:
+                    self.trading_logger.log_condition_evaluation(
+                        self.strategy_id,
+                        'entry',
+                        False,
+                        {
+                            'indicator': 'sma_crossover',
+                            'reason': 'missing_indicators',
+                            'has_fast': bool(fast_sma),
+                            'has_slow': bool(slow_sma),
+                            'fast_period': getattr(self, 'fast_period', None),
+                            'slow_period': getattr(self, 'slow_period', None),
+                        }
+                    )
+                except Exception as e:
+                    self._log(f"Error logging entry condition: {str(e)}", "ERROR")
             return False
         
         if fast_sma.current_value is None or slow_sma.current_value is None:
             self._log("SMA indicators not initialized", "DEBUG")
+            if self.trading_logger:
+                try:
+                    self.trading_logger.log_condition_evaluation(
+                        self.strategy_id,
+                        'entry',
+                        False,
+                        {
+                            'indicator': 'sma_crossover',
+                            'reason': 'indicator_not_initialized',
+                            'fast_current': getattr(fast_sma, 'current_value', None),
+                            'slow_current': getattr(slow_sma, 'current_value', None),
+                            'fast_period': self.fast_period,
+                            'slow_period': self.slow_period,
+                        }
+                    )
+                except Exception as e:
+                    self._log(f"Error logging entry condition: {str(e)}", "ERROR")
             return False
         
         # Check for MA comparison
@@ -130,6 +164,29 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                 except Exception as e:
                     self._log(f"Error logging condition: {str(e)}", "ERROR")
         
+        else:
+            # Not enough values yet to detect a crossover
+            self._log(
+                f"Not enough SMA values to evaluate crossover (fast_len={len(fast_sma.values)}, slow_len={len(slow_sma.values)})",
+                "DEBUG",
+            )
+            if self.trading_logger:
+                try:
+                    self.trading_logger.log_condition_evaluation(
+                        self.strategy_id,
+                        'entry',
+                        False,
+                        {
+                            'indicator': 'sma_crossover',
+                            'reason': 'insufficient_data',
+                            'fast_len': len(fast_sma.values) if hasattr(fast_sma, 'values') else None,
+                            'slow_len': len(slow_sma.values) if hasattr(slow_sma, 'values') else None,
+                            'fast_period': self.fast_period,
+                            'slow_period': self.slow_period,
+                        }
+                    )
+                except Exception as e:
+                    self._log(f"Error logging entry condition: {str(e)}", "ERROR")
         return result
     
     def _check_exit_conditions(self):
@@ -146,8 +203,32 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                     curr_fast = fast_sma.values[-1]
                     curr_slow = slow_sma.values[-1]
                     
+                    # Log current SMA state
+                    self._log(f"Exit check (SMA crossunder): Fast SMA={curr_fast:.2f} (prev={prev_fast:.2f}), Slow SMA={curr_slow:.2f} (prev={prev_slow:.2f})", "DEBUG")
                     # Crossunder condition
-                    if prev_fast >= prev_slow and curr_fast < curr_slow:
+                    crossunder = prev_fast >= prev_slow and curr_fast < curr_slow
+                    if self.trading_logger:
+                        try:
+                            self.trading_logger.log_condition_evaluation(
+                                self.strategy_id,
+                                'exit',
+                                crossunder,
+                                {
+                                    'indicator': 'sma_crossunder',
+                                    'fast_period': self.fast_period,
+                                    'slow_period': self.slow_period,
+                                    'prev_fast_sma': prev_fast,
+                                    'prev_slow_sma': prev_slow,
+                                    'curr_fast_sma': curr_fast,
+                                    'curr_slow_sma': curr_slow,
+                                    'operator': 'crossunder',
+                                    'threshold': 0.0,
+                                }
+                            )
+                        except Exception as e:
+                            self._log(f"Error logging exit condition: {str(e)}", "ERROR")
+                    if crossunder:
+                        self._log("Exit signal: Fast SMA crossed below Slow SMA", "INFO")
                         from .base import ExitReason
                         return ExitReason.SIGNAL
         
@@ -155,13 +236,49 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
         if self.position_entry_price and self.current_price:
             # Stop loss
             stop_loss_price = self.position_entry_price * (1 - self.stop_loss_pct)
-            if self.current_price <= stop_loss_price:
+            sl_hit = self.current_price <= stop_loss_price
+            self._log(f"SL check: price={self.current_price:.2f} <= SL={stop_loss_price:.2f} -> {sl_hit}", "DEBUG")
+            if self.trading_logger:
+                try:
+                    self.trading_logger.log_condition_evaluation(
+                        self.strategy_id,
+                        'exit',
+                        sl_hit,
+                        {
+                            'condition_type': 'stop_loss',
+                            'stop_loss': stop_loss_price,
+                            'current_price': self.current_price,
+                            'entry_price': self.position_entry_price,
+                            'stop_loss_pct': self.stop_loss_pct,
+                        }
+                    )
+                except Exception as e:
+                    self._log(f"Error logging SL condition: {str(e)}", "ERROR")
+            if sl_hit:
                 from .base import ExitReason
                 return ExitReason.STOP_LOSS
             
             # Take profit
             take_profit_price = self.position_entry_price * (1 + self.take_profit_pct)
-            if self.current_price >= take_profit_price:
+            tp_hit = self.current_price >= take_profit_price
+            self._log(f"TP check: price={self.current_price:.2f} >= TP={take_profit_price:.2f} -> {tp_hit}", "DEBUG")
+            if self.trading_logger:
+                try:
+                    self.trading_logger.log_condition_evaluation(
+                        self.strategy_id,
+                        'exit',
+                        tp_hit,
+                        {
+                            'condition_type': 'take_profit',
+                            'take_profit': take_profit_price,
+                            'current_price': self.current_price,
+                            'entry_price': self.position_entry_price,
+                            'take_profit_pct': self.take_profit_pct,
+                        }
+                    )
+                except Exception as e:
+                    self._log(f"Error logging TP condition: {str(e)}", "ERROR")
+            if tp_hit:
                 from .base import ExitReason
                 return ExitReason.TAKE_PROFIT
         

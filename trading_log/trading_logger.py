@@ -175,9 +175,74 @@ class TradingLogger:
             'timestamp': datetime.now().isoformat(),
             'data': portfolio_data
         }
-        self._write_structured_log(log_entry)
-        self.logger.info(f"Portfolio update: P&L={portfolio_data.get('total_pnl', 0):.2f}, Equity={portfolio_data.get('total_equity', 0):.2f}")
+        # self._write_structured_log(log_entry)
+        # self.logger.info(f"Portfolio update: P&L={portfolio_data.get('total_pnl', 0):.2f}, Equity={portfolio_data.get('total_equity', 0):.2f}")
     
+    def log_trade_open(self, trade_data: Dict[str, Any]):
+        """Log when a trade is opened."""
+        log_entry = {
+            'type': 'trade_open',
+            'timestamp': datetime.now().isoformat(),
+            'data': trade_data,
+        }
+        self._write_structured_log(log_entry)
+        sym = trade_data.get('symbol')
+        sid = trade_data.get('strategy_id')
+        price = trade_data.get('entry_price')
+        self.logger.info(f"Trade open: symbol={sym}, strategy={sid}, entry_price={price}")
+    
+    def log_trade_ltp_update(self, symbol: str, ltp: float):
+        """Log LTP update applied to open trades for a symbol (structured)."""
+        log_entry = {
+            'type': 'trade_ltp_update',
+            'timestamp': datetime.now().isoformat(),
+            'data': {'symbol': symbol, 'ltp': ltp},
+        }
+        self._write_structured_log(log_entry)
+        self.logger.debug(f"Trade LTP update: {symbol} -> {ltp}")
+    
+    def log_trade_close(self, trade_data: Dict[str, Any]):
+        """Log when a trade is closed."""
+        log_entry = {
+            'type': 'trade_close',
+            'timestamp': datetime.now().isoformat(),
+            'data': trade_data,
+        }
+        self._write_structured_log(log_entry)
+        sym = trade_data.get('symbol')
+        sid = trade_data.get('strategy_id')
+        price = trade_data.get('exit_price')
+        self.logger.info(f"Trade close: symbol={sym}, strategy={sid}, exit_price={price}")
+    
+    def log_portfolio_summary(self, summary: Dict[str, Any]):
+        """Log a concise portfolio summary line to trading.log.
+
+        Expected keys include: current_equity, total_pnl, realized_pnl, unrealized_pnl,
+        total_commission, win_rate, total_trades, max_drawdown, return_pct.
+        """
+        try:
+            eq = summary.get('current_equity', 0.0)
+            pnl = summary.get('total_pnl', 0.0)
+            r_pnl = summary.get('realized_pnl', 0.0)
+            u_pnl = summary.get('unrealized_pnl', 0.0)
+            comm = summary.get('total_commission', 0.0)
+            win_rate = summary.get('win_rate', 0.0) * (100.0 if summary.get('win_rate', 0.0) <= 1.0 else 1.0)
+            trades = summary.get('total_trades', 0)
+            mdd = summary.get('max_drawdown', 0.0)
+            ret = summary.get('return_pct', 0.0)
+
+            self.logger.info(
+                f"Portfolio Summary | Equity={eq:.2f} | P&L={pnl:+.2f} (R={r_pnl:+.2f}, U={u_pnl:+.2f}) | Comm={comm:.2f} | "
+                f"Trades={trades} | WinRate={win_rate:.2f}% | MaxDD={mdd:.2f} | Return={ret:.2f}%"
+            )
+        except Exception:
+            # Fall back to dumping the dict if formatting fails
+            try:
+                import json as _json
+                self.logger.info(f"Portfolio Summary: {_json.dumps(summary, default=str)}")
+            except Exception:
+                self.logger.info(f"Portfolio Summary: {summary}")
+
     def log_error(self, error_message: str, error_details: Optional[Dict[str, Any]] = None):
         """Log error"""
         log_entry = {

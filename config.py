@@ -31,7 +31,7 @@ class TradingConfig:
     db_path: str = "trading.db"  # SQLite database path
     enable_db: bool = True  # Enable database persistence
     save_market_data: bool = False  # Save market data to database (can be large)
-    fake_data_interval: int = 1  # Fake data feed interval in seconds (default: 60)
+    fake_data_interval: int = 15  # Fake data feed interval in seconds (default: 60)
     portfolio_snapshot_interval: int = 5  # Portfolio snapshot interval in seconds
 
 
