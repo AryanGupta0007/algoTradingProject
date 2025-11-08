@@ -53,6 +53,14 @@ class TradingEngine:
             logger.info(f"Database manager initialized: {self.config.trading.db_path}")
             # Load any existing positions/portfolio state from DB at startup
             try:
+                # Reconcile trades -> positions first
+                try:
+                    upserts = self.db_manager.reconcile_open_trades_to_positions()
+                    if upserts:
+                        logger.info(f"Reconciled {upserts} open trades into positions before load")
+                except Exception:
+                    logger.exception("Failed to reconcile open trades into positions")
+
                 self.load_from_database()
                 logger.info("Loaded existing portfolio state from database on initialization")
             except Exception:

@@ -768,6 +768,106 @@ class DatabaseManager:
             """, (limit,))
             return [dict(row) for row in cursor.fetchall()]
     
+    def reconcile_open_trades_to_positions(self) -> int:
+        """Backfill any open trades (no exit_time/exit_price) into the positions table.
+
+        For each open trade, we join to its order to fetch quantity/side and insert or update
+        a positions row if missing or flat. This helps ensure engine restarts see positions
+        even if a prior crash left only a trade entry.
+
+        Returns: number of positions upserted
+        """
+        upserts = 0
+        with self._lock:
+            cursor = self.conn.cursor()
+            # Fetch open trades
+            cursor.execute(
+                """
+                SELECT t.order_id, t.symbol, t.strategy_id, t.trade_type, t.entry_time, t.entry_price,
+                       t.stop_loss, t.take_profit, COALESCE(t.ltp, t.entry_price) AS ltp,
+                       o.quantity, o.side, COALESCE(o.average_price, t.entry_price) AS order_avg
+                FROM trades t
+                LEFT JOIN orders o ON o.order_id = t.order_id
+                WHERE t.exit_time IS NULL OR t.exit_price IS NULL
+                """
+            )
+            open_trades = cursor.fetchall()
+            cols = [d[0] for d in cursor.description]
+            for row in open_trades:
+                tr = dict(zip(cols, row))
+                symbol = tr['symbol']
+                strategy_id = tr.get('strategy_id') or ''
+                entry_px = tr['entry_price']
+                curr_px = tr['ltp']
+                stop_loss = tr.get('stop_loss')
+                take_profit = tr.get('take_profit')
+                opened_at = tr.get('entry_time')
+                # Determine quantity sign from order side or trade_type
+                qty = tr.get('quantity') or 0
+                side = (tr.get('side') or '').upper()
+                trade_type = (tr.get('trade_type') or '').upper()
+                if qty == 0:
+                    # Infer quantity from fills of this order_id
+                    try:
+                        cursor.execute(
+                            """
+                            SELECT COALESCE(SUM(CASE WHEN side = 'BUY' THEN quantity ELSE -quantity END), 0)
+                            FROM fills WHERE order_id = ?
+                            """,
+                            (tr['order_id'],),
+                        )
+                        net_fill = cursor.fetchone()[0] or 0
+                        qty = abs(int(net_fill))
+                    except Exception:
+                        qty = 0
+                # If still zero, cannot reconstruct reliably
+                if qty == 0:
+                    continue
+                # If side missing, derive from trade_type
+                if not side:
+                    if trade_type == 'SHORT':
+                        side = 'SELL'
+                    elif trade_type == 'LONG':
+                        side = 'BUY'
+                if side == 'SELL' or trade_type == 'SHORT':
+                    qty = -abs(qty)
+                else:
+                    qty = abs(qty)
+
+                # Check existing position
+                cursor.execute(
+                    """
+                    SELECT quantity FROM positions WHERE symbol = ? AND strategy_id = ?
+                    """,
+                    (symbol, strategy_id),
+                )
+                pos_row = cursor.fetchone()
+                if pos_row is None or (pos_row and (pos_row[0] or 0) == 0):
+                    # Upsert position
+                    cursor.execute(
+                        """
+                        INSERT OR REPLACE INTO positions (
+                            symbol, quantity, average_price, current_price, stop_loss, take_profit,
+                            strategy_id, opened_at, last_updated
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            symbol,
+                            qty,
+                            tr.get('order_avg') or entry_px,
+                            curr_px,
+                            stop_loss,
+                            take_profit,
+                            strategy_id,
+                            opened_at,
+                            datetime.now().isoformat(),
+                        ),
+                    )
+                    upserts += 1
+            self.conn.commit()
+        logger.info("Reconciled open trades to positions: upserts=%d", upserts)
+        return upserts
+    
     def close(self):
         """Close database connection"""
         if self.conn:
