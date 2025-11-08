@@ -1,0 +1,76 @@
+{
+  "total_fills": 230,
+  "open_positions": [],
+  "closed_runs": [
+    {
+      "symbol": "TCS",
+      "strategy_id": "RSI_TCS",
+      "opened_at": "2025-11-08T16:26:22.037098",
+      "closed_at": "2025-11-08T16:53:55.661300",
+      "quantity": 30,
+      "entry_avg_price": 96.94726090147665,
+      "exit_avg_price": 87.39521441816127,
+      "realized_pnl": -286.56139449946073
+    },
+    {
+      "symbol": "INFY",
+      "strategy_id": "MA_CROSS_INFY",
+      "opened_at": "2025-11-08T16:52:42.625678",
+      "closed_at": "2025-11-08T16:52:51.768448",
+      "quantity": 8,
+      "entry_avg_price": 103.8792626721973,
+      "exit_avg_price": 100.7482795025685,
+      "realized_pnl": -25.047865357030446
+    },
+    {
+      "symbol": "TCS",
+      "strategy_id": "RSI_TCS",
+      "opened_at": "2025-11-08T16:26:19.272709",
+      "closed_at": "2025-11-08T16:26:21.903442",
+      "quantity": 5,
+      "entry_avg_price": 89.36096031177624,
+      "exit_avg_price": 89.20796532559777,
+      "realized_pnl": -0.7649749308923504
+    },
+    {
+      "symbol": "TCS",
+      "strategy_id": "RSI_TCS",
+      "opened_at": "2025-11-08T16:26:19.008857",
+      "closed_at": "2025-11-08T16:26:19.141140",
+      "quantity": 5,
+      "entry_avg_price": 89.22580870300064,
+      "exit_avg_price": 89.20796532559777,
+      "realized_pnl": -0.08921688701434505
+    },
+    {
+      "symbol": "TCS",
+      "strategy_id": "RSI_TCS",
+      "opened_at": "2025-11-08T16:10:34.377740",
+      "closed_at": "2025-11-08T16:26:15.865636",
+      "quantity": 5,
+      "entry_avg_price": 93.09792712559356,
+      "exit_avg_price": 98.79595877427364,
+      "realized_pnl": 28.49015824340043
+    },
+    {
+      "symbol": "RELIANCE",
+      "strategy_id": "MA_CROSS_RELIANCE",
+      "opened_at": "2025-11-08T16:10:40.512977",
+      "closed_at": "2025-11-08T16:10:46.658661",
+      "quantity": 10,
+      "entry_avg_price": 95.58908850457092,
+      "exit_avg_price": 100.09740232280836,
+      "realized_pnl": 45.0831381823744
+    },
+    {
+      "symbol": "TCS",
+      "strategy_id": "RSI_TCS",
+      "opened_at": "2025-11-08T16:10:28.098421",
+      "closed_at": "2025-11-08T16:10:34.242669",
+      "quantity": 5,
+      "entry_avg_price": 94.8595967157885,
+      "exit_avg_price": 98.79595877427364,
+      "realized_pnl": 19.681810292425723
+    }
+  ]
+}
