@@ -16,7 +16,7 @@ class ICICIConfig:
     session_token: Optional[str] = None
     base_url: str = "https://api.icicidirect.com/breezeapi/v1"
     websocket_url: str = "wss://api.icicidirect.com/breezeapi/v1"
-    enabled: bool = False  # Set to True to use real API
+    enabled: bool = True  # Set to True to use real API
 
 
 @dataclass
@@ -32,8 +32,8 @@ class TradingConfig:
     log_file: str = "trading.log"
     db_path: str = "trading.db"  # SQLite database path
     enable_db: bool = True  # Enable database persistence
-    save_market_data: bool = False  # Save market data to database (can be large)
-    fake_data_interval: int = 0  # Fake data feed interval in seconds (default: 60)
+    save_market_data: bool = True  # Save market data to database (can be large)
+    fake_data_interval: int = 1  # Fake data feed interval in seconds (default: 60)
     portfolio_snapshot_interval: int = 5  # Portfolio snapshot interval in seconds
 
 
@@ -54,4 +54,3 @@ class Config:
         if self.trading is None:
             self.trading = TradingConfig()
 
-             

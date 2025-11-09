@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 from datetime import timedelta
 import random
-from config import Config
+from app_config import Config
 from datafeed import DataFeed, ICICIBreezeDataFeed, FakeDataFeed, OHLCVData, TickData
 from datafeed.resampler import DataResampler
 from order import OrderManager, Order, OrderSide, OrderType
@@ -78,6 +78,8 @@ class TradingEngine:
         # State
         self.is_running = False
         self.thread: Optional[threading.Thread] = None
+        # Guard to prevent trading during historical warm-up
+        self.is_bootstrapping: bool = False
         
         # Setup callbacks
         self.order_manager.add_fill_callback(self._on_fill)
@@ -111,9 +113,12 @@ class TradingEngine:
         # If the data feed offers a `fetch_historical` method, use it; otherwise
         # generate synthetic recent 1-min bars (useful for the FakeDataFeed).
         try:
+            self.is_bootstrapping = True
             self._bootstrap_historical_data(unique_symbols, minutes=30)
         except Exception as e:
             logger.warning(f"Failed to bootstrap historical data: {e}")
+        finally:
+            self.is_bootstrapping = False
     def add_strategy(self, strategy: BaseStrategy, resample_timeframe: Optional[str] = None):
         """
         Add a trading strategy.
@@ -251,6 +256,11 @@ class TradingEngine:
             for symbol in symbols:
                 try:
                     raw_hist = self.data_feed.fetch_historical(symbol, timeframe='1min', limit=minutes)
+                    try:
+                        cnt = len(raw_hist) if raw_hist is not None else 0
+                    except Exception:
+                        cnt = 0
+                    logger.info(f"Bootstrapped {cnt} historical bars for {symbol}")
                     if not raw_hist:
                         continue
                     # Assume raw_hist is iterable of OHLCVData or dicts convertible to OHLCVData
@@ -406,7 +416,12 @@ class TradingEngine:
             
             # Get all strategies for this symbol
             strategy_ids = self.strategy_symbol_map.get(data.symbol, [])
-            
+
+            # During bootstrap, do not run strategies or exits
+            if self.is_bootstrapping:
+                logger.debug(f"[Engine] Bootstrapping active; skipping strategy execution for {data.symbol}")
+                return
+
             if strategy_ids:
                 logger.info(f"[Engine] Processing {len(strategy_ids)} strategies for {data.symbol}: {strategy_ids}")
                 
@@ -475,6 +490,10 @@ class TradingEngine:
     
     def _on_strategy_order(self, order: Order):
         """Handle order from strategy"""
+        # Ignore any orders during historical bootstrap
+        if getattr(self, 'is_bootstrapping', False):
+            logger.info(f"[Engine] Ignoring order during bootstrap from {order.strategy_id}: {order.side.value} {order.quantity} {order.symbol} @ {order.order_type.value}")
+            return
         logger.info(f"[Engine] Received order from strategy {order.strategy_id}: {order.side.value} {order.quantity} {order.symbol} @ {order.order_type.value}")
         
         # RMS check
@@ -792,7 +811,7 @@ class TradingEngine:
         logger.debug(f"[Engine] Checking position exits for {symbol}: price={price:.2f}, stop_loss={position.stop_loss}, take_profit={position.take_profit}")
         
         # Check stop loss
-        if position.should_stop_loss():
+        if position.stop_loss is not None and position.should_stop_loss():
             logger.warning(f"[Engine] STOP LOSS TRIGGERED for {symbol}: price={price:.2f} <= stop_loss={position.stop_loss:.2f}")
             # Create exit order
             order = Order(
@@ -805,10 +824,13 @@ class TradingEngine:
             self.order_manager.submit_order(order)
             logger.info(f"[Engine] Stop loss exit order submitted for {symbol}: {order.order_id}")
         else:
-            logger.debug(f"[Engine] Stop loss check: {symbol} price {price:.2f} > stop_loss {position.stop_loss:.2f} (safe)")
+            if position.stop_loss is not None:
+                logger.debug(f"[Engine] Stop loss check: {symbol} price {price:.2f} > stop_loss {position.stop_loss:.2f} (safe)")
+            else:
+                logger.debug(f"[Engine] Stop loss not set for {symbol}; skipping SL check")
         
         # Check take profit
-        if position.should_take_profit():
+        if position.take_profit is not None and position.should_take_profit():
             logger.info(f"[Engine] TAKE PROFIT TRIGGERED for {symbol}: price={price:.2f} >= take_profit={position.take_profit:.2f}")
             # Create exit order
             order = Order(
@@ -821,8 +843,10 @@ class TradingEngine:
             self.order_manager.submit_order(order)
             logger.info(f"[Engine] Take profit exit order submitted for {symbol}: {order.order_id}")
         else:
-            if position.take_profit:
+            if position.take_profit is not None:
                 logger.debug(f"[Engine] Take profit check: {symbol} price {price:.2f} < take_profit {position.take_profit:.2f}")
+            else:
+                logger.debug(f"[Engine] Take profit not set for {symbol}; skipping TP check")
     
     def get_portfolio_summary(self) -> dict:
         """Get portfolio summary"""

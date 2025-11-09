@@ -2,7 +2,7 @@
 Main entry point for the paper trading system.
 """
 import time
-from config import Config
+from app_config import Config
 from engine import TradingEngine
 from strategy import (
     MovingAverageCrossoverStrategy,
@@ -39,6 +39,7 @@ def main():
     """Main function to run the paper trading system"""
     # Load configuration
     config = Config()
+    logger.info(f"ICICI enabled={config.icici.enabled}, api_key_set={bool(config.icici.api_key)}, session_set={bool(config.icici.session_token)}")
     
     # Initialize trading engine
     engine = TradingEngine(config)

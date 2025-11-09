@@ -15,7 +15,7 @@ from collections import deque, defaultdict
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import Config
+from app_config import Config
 from database.db_manager import DatabaseManager
 
 # Page config

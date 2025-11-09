@@ -11,7 +11,7 @@ from collections import defaultdict
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, parent_dir)
 
-from config import Config
+from app_config import Config
 from database.db_manager import DatabaseManager
 
 def get_closed_positions_with_debug(db: DatabaseManager, limit: int = 10000, debug=True):

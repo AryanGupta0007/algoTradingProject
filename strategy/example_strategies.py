@@ -75,6 +75,11 @@ class ADXSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
                 except Exception:
                     pass
             return False
+        # Console log when DF is ready for entry evaluation
+        try:
+            logger.info(f"[{self.strategy_id}] DF ready for entry check ({self.symbol}) size={len(df)} last_close={float(df['close'].iloc[-1]):.2f}")
+        except Exception:
+            pass
         high, low, close = df['high'], df['low'], df['close']
         adx = talib.ADX(high, low, close, timeperiod=self.adx_period)
         dmp = talib.PLUS_DI(high, low, close, timeperiod=self.adx_period)
@@ -199,6 +204,11 @@ class OpenRangeBreakoutSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
                 except Exception:
                     pass
             return False
+        # Console log when DF is ready for entry evaluation
+        try:
+            logger.info(f"[{self.strategy_id}] DF ready for entry check ({self.symbol}) size={len(df)} last_close={float(df['close'].iloc[-1]):.2f}")
+        except Exception:
+            pass
         high, low, close = df['high'], df['low'], df['close']
         adx = talib.ADX(high, low, close, timeperiod=5)
         dmp = talib.PLUS_DI(high, low, close, timeperiod=5)
