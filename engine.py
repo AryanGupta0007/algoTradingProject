@@ -640,6 +640,56 @@ class TradingEngine:
                         })
                     except Exception:
                         logger.debug("Failed to log trade close")
+                # Sign flip within a single fill (e.g., long -> short without passing through zero)
+                elif prev_qty != 0 and new_qty != 0 and ((prev_qty > 0 and new_qty < 0) or (prev_qty < 0 and new_qty > 0)):
+                    # First close the previous trade at the fill price/time
+                    self.db_manager.close_latest_trade(
+                        symbol=fill.symbol,
+                        strategy_id=order.strategy_id or "",
+                        exit_time=fill.timestamp.isoformat() if hasattr(fill.timestamp, 'isoformat') else str(fill.timestamp),
+                        exit_price=float(fill.price),
+                        status='closed'
+                    )
+                    try:
+                        self.trading_logger.log_trade_close({
+                            'order_id': order.order_id,
+                            'symbol': fill.symbol,
+                            'strategy_id': order.strategy_id or "",
+                            'trade_type': 'LONG' if (prev_position and prev_position.quantity > 0) else 'SHORT',
+                            'exit_time': fill.timestamp,
+                            'exit_price': float(fill.price),
+                        })
+                    except Exception:
+                        logger.debug("Failed to log trade close (sign flip)")
+
+                    # Then open a new trade for the residual in the new direction
+                    entry_price = position_after.average_price if position_after else fill.price
+                    trade_type = 'LONG' if (position_after and position_after.is_long()) else 'SHORT'
+                    self.db_manager.create_trade(
+                        order_id=order.order_id,
+                        symbol=fill.symbol,
+                        strategy_id=order.strategy_id or "",
+                        trade_type=trade_type,
+                        entry_time=fill.timestamp.isoformat() if hasattr(fill.timestamp, 'isoformat') else str(fill.timestamp),
+                        entry_price=float(entry_price),
+                        stop_loss=position_after.stop_loss if position_after else None,
+                        take_profit=position_after.take_profit if position_after else None,
+                        ltp=position_after.current_price if position_after else fill.price,
+                    )
+                    try:
+                        self.trading_logger.log_trade_open({
+                            'order_id': order.order_id,
+                            'symbol': fill.symbol,
+                            'strategy_id': order.strategy_id or "",
+                            'trade_type': trade_type,
+                            'entry_time': fill.timestamp,
+                            'entry_price': float(entry_price),
+                            'stop_loss': position_after.stop_loss if position_after else None,
+                            'take_profit': position_after.take_profit if position_after else None,
+                            'ltp': position_after.current_price if position_after else float(fill.price),
+                        })
+                    except Exception:
+                        logger.debug("Failed to log trade open (sign flip)")
             except Exception as e:
                 logger.error(f"Error updating trades table: {e}")
         

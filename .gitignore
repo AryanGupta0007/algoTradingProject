@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.env
 
 # IDE
 .vscode/
@@ -31,6 +32,9 @@ env/
 *.swp
 *.swo
 *~
+trading.db-journal 
+trading.db
+
 
 # Logs
 *.log
