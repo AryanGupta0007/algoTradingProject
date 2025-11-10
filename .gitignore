@@ -37,7 +37,7 @@ trading.db
 
 
 # Logs
-*.log
+# *.log
 *_structured.jsonl
 
 # OS

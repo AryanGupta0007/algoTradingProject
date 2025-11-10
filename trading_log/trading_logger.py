@@ -162,7 +162,21 @@ class TradingLogger:
                         human_msg += f" — condition[{idx}] {name} {details.get('operator','?')} {details.get('threshold','')} -> value={_safe_fmt(shown)}, result={passed}"
                     else:
                         human_msg += f" — condition[{idx}] {name} result={passed}"
-
+                # Generic case: indicator operator threshold with a value
+                elif all(k in details for k in ('indicator', 'operator', 'threshold')):
+                    name = details.get('indicator')
+                    op = details.get('operator')
+                    thr = details.get('threshold')
+                    # value may be provided as 'value' or 'indicator_value' or 'indicator_curr'
+                    val = (
+                        details.get('value', None)
+                        if isinstance(details, dict) else None
+                    )
+                    if val is None and isinstance(details, dict):
+                        val = details.get('indicator_value', details.get('indicator_curr', None))
+                    side = details.get('side') if isinstance(details, dict) else None
+                    side_prefix = f" [{side}]" if side else ""
+                    human_msg += f" —{side_prefix} {name} {op} {_safe_fmt(thr)} -> value={_safe_fmt(val)} = {result}"
         except Exception:
             human_msg = f"Condition evaluation [{strategy_id}]: {condition_type} = {result}"
 

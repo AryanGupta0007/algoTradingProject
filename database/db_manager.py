@@ -571,6 +571,33 @@ class DatabaseManager:
         """Insert a new trade row with status 'open'."""
         with self._lock:
             cursor = self.conn.cursor()
+            # Guard: ensure only one open trade per (symbol, strategy_id)
+            cursor.execute(
+                """
+                SELECT trade_id FROM trades
+                WHERE symbol = ? AND strategy_id = ? AND status = 'open'
+                ORDER BY entry_time DESC
+                LIMIT 1
+                """,
+                (symbol, strategy_id),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                # Update LTP on the existing open trade and return
+                try:
+                    if ltp is not None:
+                        cursor.execute(
+                            """
+                            UPDATE trades SET ltp = ? WHERE trade_id = ?
+                            """,
+                            (ltp, row[0]),
+                        )
+                        self.conn.commit()
+                except Exception:
+                    pass
+                logger.warning("Duplicate open trade prevented for %s/%s; skipping create", symbol, strategy_id)
+                return
+
             cursor.execute(
                 """
                 INSERT OR IGNORE INTO trades (

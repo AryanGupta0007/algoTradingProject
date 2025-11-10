@@ -148,6 +148,11 @@ class TradingEngine:
         
         # Set up strategy callbacks
         strategy.set_order_callback(self._on_strategy_order)
+        # Forward strategy logs to the TradingSystem logger via a log callback
+        try:
+            strategy.set_log_callback(self._on_strategy_log)
+        except Exception:
+            pass
         # Provide strategy with engine's TradingLogger for structured condition logs
         try:
             strategy.set_trading_logger(self.trading_logger)
@@ -161,6 +166,19 @@ class TradingEngine:
             self.data_feed.subscribe([strategy.symbol], self._on_market_data)
         
         logger.info(f"Added strategy: {strategy.strategy_id} for symbol: {strategy.symbol}")
+
+    def _on_strategy_log(self, message: str, level: str = "INFO"):
+        """Forward strategy log messages into the TradingSystem logger with proper level."""
+        try:
+            lvl = getattr(self.trading_logger.logger, level.lower(), None)
+            if callable(lvl):
+                lvl(message)
+            else:
+                # Fallback
+                self.trading_logger.logger.info(message)
+        except Exception:
+            # Absolute fallback to module logger if trading_logger not available
+            getattr(logger, level.lower())(message)
     
     def remove_strategy(self, strategy_id: str):
         """Remove a trading strategy"""
@@ -237,7 +255,7 @@ class TradingEngine:
         except Exception:
             logger.exception("Failed to start portfolio snapshot thread")
 
-    def _bootstrap_historical_data(self, symbols: List[str], minutes: int = 30):
+    def _bootstrap_historical_data(self, symbols: List[str], minutes: int = 150):
         """Fetch or generate recent 1-minute OHLCV history for each symbol.
 
         This helps indicators warm up before live streaming begins. The method
@@ -495,6 +513,43 @@ class TradingEngine:
             logger.info(f"[Engine] Ignoring order during bootstrap from {order.strategy_id}: {order.side.value} {order.quantity} {order.symbol} @ {order.order_type.value}")
             return
         logger.info(f"[Engine] Received order from strategy {order.strategy_id}: {order.side.value} {order.quantity} {order.symbol} @ {order.order_type.value}")
+        # Enforce one-position-per (symbol, strategy) and forbid stacking; only owner may operate while a position exists
+        try:
+            position = self.portfolio.get_position(order.symbol)
+            if position and not position.is_flat():
+                owner_id = getattr(position, 'strategy_id', '') or ''
+                # If order is from a non-owner strategy, block any operation (both sides)
+                if owner_id and owner_id != (order.strategy_id or ''):
+                    logger.warning(f"[Engine] Blocking order from non-owner strategy {order.strategy_id} on {order.symbol} (owned by {owner_id})")
+                    try:
+                        strat = self.strategies.get(order.strategy_id)
+                        if strat is not None:
+                            setattr(strat, '_entry_inflight', False)
+                    except Exception:
+                        pass
+                    return
+                # From owner strategy: block same-side stacking
+                qty = getattr(position, 'quantity', 0) or 0
+                if qty > 0 and order.side.name == 'BUY':
+                    logger.warning(f"[Engine] Blocking duplicate LONG entry for {order.strategy_id} on {order.symbol} (already LONG qty={qty})")
+                    try:
+                        strat = self.strategies.get(order.strategy_id)
+                        if strat is not None:
+                            setattr(strat, '_entry_inflight', False)
+                    except Exception:
+                        pass
+                    return
+                if qty < 0 and order.side.name == 'SELL':
+                    logger.warning(f"[Engine] Blocking duplicate SHORT entry for {order.strategy_id} on {order.symbol} (already SHORT qty={qty})")
+                    try:
+                        strat = self.strategies.get(order.strategy_id)
+                        if strat is not None:
+                            setattr(strat, '_entry_inflight', False)
+                    except Exception:
+                        pass
+                    return
+        except Exception as e:
+            logger.error(f"[Engine] Error enforcing single-position rule: {e}")
         
         # RMS check
         if self.rms:
@@ -530,6 +585,13 @@ class TradingEngine:
                     logger.error(f"Error saving order to database: {e}")
         else:
             logger.error(f"[Engine] Failed to submit order {order.order_id}")
+            # Clear inflight flag so strategy can retry later
+            try:
+                strat = self.strategies.get(order.strategy_id)
+                if strat is not None:
+                    setattr(strat, '_entry_inflight', False)
+            except Exception:
+                pass
     
     def _on_fill(self, fill):
         """Handle order fill"""
@@ -727,6 +789,11 @@ class TradingEngine:
                 strategy.position_entry_time = None
                 strategy.position_is_long = None
                 logger.info(f"[Engine] Strategy {order.strategy_id} position updated: has_position=False (position closed)")
+            # In all cases after processing a fill, clear inflight to allow future entries
+            try:
+                setattr(strategy, '_entry_inflight', False)
+            except Exception:
+                pass
         
         # Update portfolio metrics
         logger.debug(f"[Engine] Updating portfolio metrics")

@@ -68,17 +68,26 @@ class Portfolio:
                     # Flip to long with remaining buy
                     position.quantity = remaining
                     position.average_price = fill.price
+                    # On sign flip, reset stale stops if order doesn't provide new ones
+                    if order:
+                        position.strategy_id = order.strategy_id or position.strategy_id
+                        position.stop_loss = order.stop_loss if order.stop_loss is not None else None
+                        position.take_profit = order.take_profit if order.take_profit is not None else None
+                    else:
+                        position.stop_loss = None
+                        position.take_profit = None
                 if position.quantity == 0:
                     position.average_price = 0.0
 
-            # Update stops/strategy tag from order
+            # Update stops/strategy tag from order (same-side increase or fresh long)
             if order:
+                if order.strategy_id:
+                    position.strategy_id = order.strategy_id
+                # Only override when provided; otherwise keep prior values for same-side increases
                 if order.stop_loss is not None:
                     position.stop_loss = order.stop_loss
                 if order.take_profit is not None:
                     position.take_profit = order.take_profit
-                if order.strategy_id:
-                    position.strategy_id = order.strategy_id
         else:  # SELL
             # Cash move (sell -> cash in)
             self.cash += (fill.price * fill.quantity - fill.commission)
@@ -97,12 +106,12 @@ class Portfolio:
                     position.average_price = fill.price
                 # Update stops/strategy tag from order when resulting position is short
                 if order:
+                    if order.strategy_id:
+                        position.strategy_id = order.strategy_id
                     if order.stop_loss is not None:
                         position.stop_loss = order.stop_loss
                     if order.take_profit is not None:
                         position.take_profit = order.take_profit
-                    if order.strategy_id:
-                        position.strategy_id = order.strategy_id
             else:
                 # Reduce/close long
                 close = min(fill.quantity, position.quantity)
@@ -114,13 +123,15 @@ class Portfolio:
                     # Flip to short with remaining sell
                     position.quantity = -remaining
                     position.average_price = fill.price
+                    # On sign flip, reset stale stops if order doesn't provide new ones
                     if order:
-                        if order.stop_loss is not None:
-                            position.stop_loss = order.stop_loss
-                        if order.take_profit is not None:
-                            position.take_profit = order.take_profit
                         if order.strategy_id:
                             position.strategy_id = order.strategy_id
+                        position.stop_loss = order.stop_loss if order.stop_loss is not None else None
+                        position.take_profit = order.take_profit if order.take_profit is not None else None
+                    else:
+                        position.stop_loss = None
+                        position.take_profit = None
                 elif position.quantity == 0:
                     position.average_price = 0.0
 

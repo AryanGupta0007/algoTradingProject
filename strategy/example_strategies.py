@@ -4,8 +4,6 @@ import pandas as pd
 import numpy as np
 import talib
 from .base import BaseStrategy, EntryCondition, ExitCondition
-from indicators.sma import SMA
-from indicators.rsi import RSI
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +91,18 @@ class ADXSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
         cond_long = (adx_prev > (adx_mean.iloc[-1] + adx_std.iloc[-1]) and dmp_now > adx_now and adx_now > dmn_now)
         cond_short = (adx_prev > (adx_mean.iloc[-1] + adx_std.iloc[-1]) and dmn_now > adx_now and adx_now > dmp_now)
         self._log(f"[ADX] entry eval: LONG={cond_long} SHORT={cond_short} | prevADX={adx_prev:.2f} mean={adx_mean.iloc[-1]:.2f} std={adx_std.iloc[-1]:.2f} DMP={dmp_now:.2f} DMN={dmn_now:.2f} ADX={adx_now:.2f}", "DEBUG")
+        # Human-readable per-side condition evaluation logs
+        try:
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(cond_long)} — [LONG] adx_dmi (prevADX={adx_prev:.2f}, ADX={adx_now:.2f}, DMP={dmp_now:.2f}, DMN={dmn_now:.2f})",
+                "DEBUG",
+            )
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(cond_short)} — [SHORT] adx_dmi (prevADX={adx_prev:.2f}, ADX={adx_now:.2f}, DMP={dmp_now:.2f}, DMN={dmn_now:.2f})",
+                "DEBUG",
+            )
+        except Exception:
+            pass
         if self.trading_logger:
             try:
                 self.trading_logger.log_condition_evaluation(self.strategy_id, 'entry', cond_long, {
@@ -227,12 +237,12 @@ class OpenRangeBreakoutSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
         vwap_now = float(vwap.iloc[-1]) if not np.isnan(vwap.iloc[-1]) else close_now
         atr_now = float(atr.iloc[-1]) if not np.isnan(atr.iloc[-1]) else 0.0
 
-        long_condition = True #(
-        #     (close_now > range_high)
-        #     and (adx_now > 30)
-        #     and (dmp_now > adx_now > dmn_now)
-        #     and (close_now > vwap_now or ema5_now > sma5_now)
-        # )
+        long_condition = (
+            (close_now > range_high)
+            and (adx_now > 30)
+            and (dmp_now > adx_now > dmn_now)
+            and (close_now > vwap_now or ema5_now > sma5_now)
+        )
         short_condition = (
             (close_now < range_low)
             and (adx_now > 30)
@@ -241,6 +251,18 @@ class OpenRangeBreakoutSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
         )
 
         self._log(f"[ORB] LONG={long_condition} SHORT={short_condition} | RH={range_high:.2f} RL={range_low:.2f} ADX={adx_now:.2f} DMP={dmp_now:.2f} DMN={dmn_now:.2f} VWAP={vwap_now:.2f} EMA5={ema5_now:.2f} SMA5={sma5_now:.2f}", "DEBUG")
+        # Human-readable per-side condition evaluation logs
+        try:
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(long_condition)} — [LONG] orb break (range_high={range_high:.2f}) with filters ADX={adx_now:.2f}, DMP={dmp_now:.2f}, DMN={dmn_now:.2f}, VWAP={vwap_now:.2f}, EMA5={ema5_now:.2f}, SMA5={sma5_now:.2f}",
+                "DEBUG",
+            )
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(short_condition)} — [SHORT] orb break (range_low={range_low:.2f}) with filters ADX={adx_now:.2f}, DMP={dmp_now:.2f}, DMN={dmn_now:.2f}, VWAP={vwap_now:.2f}, EMA5={ema5_now:.2f}, SMA5={sma5_now:.2f}",
+                "DEBUG",
+            )
+        except Exception:
+            pass
         if self.trading_logger:
             try:
                 self.trading_logger.log_condition_evaluation(self.strategy_id, 'entry', bool(long_condition), {
@@ -434,6 +456,18 @@ class ADXDMISupertrendSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
         long_condition = (adx_now > 40 and atr_now > atr_mean_now and dmi_plus_now > dmi_minus_now)
         short_condition = (adx_now > 40 and atr_now > atr_mean_now and dmi_minus_now > dmi_plus_now)
         self._log(f"[ADX/ST] entry eval: LONG={long_condition} SHORT={short_condition} | ADX={adx_now:.2f} DMI+={dmi_plus_now:.2f} DMI-={dmi_minus_now:.2f} ATR={atr_now:.4f} ATRmean={atr_mean_now:.4f}", "DEBUG")
+        # Human-readable per-side condition evaluation logs
+        try:
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(long_condition)} — [LONG] adx_dmi_supertrend (ADX={adx_now:.2f}, DMI+={dmi_plus_now:.2f}, DMI-={dmi_minus_now:.2f}, ATR={atr_now:.4f} > ATRmean={atr_mean_now:.4f})",
+                "DEBUG",
+            )
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(short_condition)} — [SHORT] adx_dmi_supertrend (ADX={adx_now:.2f}, DMI+={dmi_plus_now:.2f}, DMI-={dmi_minus_now:.2f}, ATR={atr_now:.4f} > ATRmean={atr_mean_now:.4f})",
+                "DEBUG",
+            )
+        except Exception:
+            pass
         if self.trading_logger:
             try:
                 self.trading_logger.log_condition_evaluation(self.strategy_id, 'entry', bool(long_condition), {
@@ -474,7 +508,7 @@ class ADXDMISupertrendSignalStrategy(_OHLCVBufferMixin, BaseStrategy):
     def _get_take_profit_for_side(self, side):
         return self._next_entry_tp
 
-class MovingAverageCrossoverStrategy(BaseStrategy):
+class MovingAverageCrossoverStrategy(_OHLCVBufferMixin, BaseStrategy):
     """Moving average crossover strategy"""
     
     def __init__(
@@ -530,156 +564,18 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
             quantity=quantity,
             initial_capital=initial_capital
         )
+        self._init_buffer()
     
     def _initialize_indicators(self):
-        """Initialize SMA indicators"""
-        self.indicators["fast_sma"] = SMA(self.fast_period)
-        self.indicators["slow_sma"] = SMA(self.slow_period)
+        # Using TA-Lib SMA via buffer; no indicator objects needed
+        pass
     
     def _check_entry_conditions(self) -> bool:
-        """Check for moving average crossover"""
-        fast_sma = self.indicators.get("fast_sma")
-        slow_sma = self.indicators.get("slow_sma")
-        
-        if not fast_sma or not slow_sma:
-            self._log("Missing SMA indicators", "DEBUG")
-            if self.trading_logger:
-                try:
-                    self.trading_logger.log_condition_evaluation(
-                        self.strategy_id,
-                        'entry',
-                        False,
-                        {
-                            'indicator': 'sma_crossover',
-                            'reason': 'missing_indicators',
-                            'has_fast': bool(fast_sma),
-                            'has_slow': bool(slow_sma),
-                            'fast_period': getattr(self, 'fast_period', None),
-                            'slow_period': getattr(self, 'slow_period', None),
-                        }
-                    )
-                except Exception as e:
-                    self._log(f"Error logging entry condition: {str(e)}", "ERROR")
-            return False
-        
-        if fast_sma.current_value is None or slow_sma.current_value is None:
-            self._log("SMA indicators not initialized", "DEBUG")
-            if self.trading_logger:
-                try:
-                    self.trading_logger.log_condition_evaluation(
-                        self.strategy_id,
-                        'entry',
-                        False,
-                        {
-                            'indicator': 'sma_crossover',
-                            'reason': 'indicator_not_initialized',
-                            'fast_current': getattr(fast_sma, 'current_value', None),
-                            'slow_current': getattr(slow_sma, 'current_value', None),
-                            'fast_period': self.fast_period,
-                            'slow_period': self.slow_period,
-                        }
-                    )
-                except Exception as e:
-                    self._log(f"Error logging entry condition: {str(e)}", "ERROR")
-            return False
-        
-        # Check for MA comparison (support LONG and SHORT)
-        result = False
-        if len(fast_sma.values) >= 2 and len(slow_sma.values) >= 2:
-            prev_fast = fast_sma.values[-2]
-            prev_slow = slow_sma.values[-2]
-            curr_fast = fast_sma.values[-1]
-            curr_slow = slow_sma.values[-1]
-            
-            # Log the current values of both indicators
-            self._log(f"Checking Fast SMA {self.fast_period} vs Slow SMA {self.slow_period}", "DEBUG")
-            self._log(f"Fast SMA={curr_fast:.2f} (prev={prev_fast:.2f})", "DEBUG")
-            self._log(f"Slow SMA={curr_slow:.2f} (prev={prev_slow:.2f})", "DEBUG")
-            
-            # Check if fast crosses above slow -> LONG
-            cross_over = prev_fast <= prev_slow and curr_fast > curr_slow
-            # Check if fast crosses below slow -> SHORT
-            cross_under = prev_fast >= prev_slow and curr_fast < curr_slow
-
-            # Human-readable evaluation for both sides
-            self._log(f"MA entry eval: LONG(crossover)={cross_over}, SHORT(crossunder)={cross_under}", "DEBUG")
-
-            # Emit structured evaluations for both LONG and SHORT checks
-            if self.trading_logger:
-                try:
-                    self.trading_logger.log_condition_evaluation(
-                        self.strategy_id,
-                        'entry',
-                        cross_over,
-                        {
-                            'side': 'LONG',
-                            'indicator': 'sma_crossover',
-                            'prev_fast_sma': prev_fast,
-                            'prev_slow_sma': prev_slow,
-                            'curr_fast_sma': curr_fast,
-                            'curr_slow_sma': curr_slow,
-                            'operator': 'crossover',
-                            'fast_period': self.fast_period,
-                            'slow_period': self.slow_period,
-                        }
-                    )
-                    self.trading_logger.log_condition_evaluation(
-                        self.strategy_id,
-                        'entry',
-                        cross_under,
-                        {
-                            'side': 'SHORT',
-                            'indicator': 'sma_crossunder',
-                            'prev_fast_sma': prev_fast,
-                            'prev_slow_sma': prev_slow,
-                            'curr_fast_sma': curr_fast,
-                            'curr_slow_sma': curr_slow,
-                            'operator': 'crossunder',
-                            'fast_period': self.fast_period,
-                            'slow_period': self.slow_period,
-                        }
-                    )
-                except Exception:
-                    pass
-
-            if cross_over:
-                result = True
-                self._entry_signal_side = 'LONG'
-                self._log(f"Entry signal: Fast SMA crossed ABOVE Slow SMA (LONG)", "INFO")
-            elif cross_under:
-                result = True
-                self._entry_signal_side = 'SHORT'
-                self._log(f"Entry signal: Fast SMA crossed BELOW Slow SMA (SHORT)", "INFO")
-            else:
-                self._log("No SMA crossover entry signal", "DEBUG")
-            
-            # Log condition evaluation to structured log
-            if self.trading_logger:
-                condition_details = {
-                    'fast_sma': curr_fast,
-                    'slow_sma': curr_slow,
-                    'prev_fast_sma': prev_fast,
-                    'prev_slow_sma': prev_slow,
-                    'fast_period': self.fast_period,
-                    'slow_period': self.slow_period,
-                    'result': result
-                }
-                try:
-                    self.trading_logger.log_condition_evaluation(
-                        self.strategy_id,
-                        'entry',
-                        result,
-                        condition_details
-                    )
-                except Exception as e:
-                    self._log(f"Error logging condition: {str(e)}", "ERROR")
-        
-        else:
-            # Not enough values yet to detect a crossover
-            self._log(
-                f"Not enough SMA values to evaluate crossover (fast_len={len(fast_sma.values)}, slow_len={len(slow_sma.values)})",
-                "DEBUG",
-            )
+        """Check for moving average crossover using TA-Lib SMA"""
+        # Append latest bar to buffer and build DataFrame
+        self._append_from_current()
+        df = self._as_df()
+        if df is None or len(df) < max(self.fast_period, self.slow_period) + 2:
             if self.trading_logger:
                 try:
                     self.trading_logger.log_condition_evaluation(
@@ -689,83 +585,187 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
                         {
                             'indicator': 'sma_crossover',
                             'reason': 'insufficient_data',
-                            'fast_len': len(fast_sma.values) if hasattr(fast_sma, 'values') else None,
-                            'slow_len': len(slow_sma.values) if hasattr(slow_sma, 'values') else None,
+                            'have': int(len(df) if df is not None else 0),
+                            'need': int(max(self.fast_period, self.slow_period) + 2),
                             'fast_period': self.fast_period,
                             'slow_period': self.slow_period,
                         }
                     )
-                except Exception as e:
-                    self._log(f"Error logging entry condition: {str(e)}", "ERROR")
+                except Exception:
+                    pass
+            return False
+
+        close = df['close']
+        fast_arr = talib.SMA(close, timeperiod=self.fast_period)
+        slow_arr = talib.SMA(close, timeperiod=self.slow_period)
+        prev_fast, curr_fast = float(fast_arr.iloc[-2]), float(fast_arr.iloc[-1])
+        prev_slow, curr_slow = float(slow_arr.iloc[-2]), float(slow_arr.iloc[-1])
+        
+        # Check for MA comparison (support LONG and SHORT)
+        result = False
+        
+        # Log the current values of both indicators
+        self._log(f"Checking Fast SMA {self.fast_period} vs Slow SMA {self.slow_period}", "DEBUG")
+        self._log(f"Fast SMA={curr_fast:.2f} (prev={prev_fast:.2f})", "DEBUG")
+        self._log(f"Slow SMA={curr_slow:.2f} (prev={prev_slow:.2f})", "DEBUG")
+        
+        # Check if fast crosses above slow -> LONG
+        cross_over = prev_fast <= prev_slow and curr_fast > curr_slow
+        # Check if fast crosses below slow -> SHORT
+        cross_under = prev_fast >= prev_slow and curr_fast < curr_slow
+
+        # Human-readable evaluation for both sides
+        self._log(f"[EMA] entry eval: LONG(crossover)={cross_over}, SHORT(crossunder)={cross_under}", "DEBUG")
+        # Human-readable per-side condition evaluation logs
+        try:
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(cross_over)} — [LONG] fast_sma{self.short} crossover slow_sma{self.long} -> prev_fast={prev_fast:.2f}, prev_slow={prev_slow:.2f}, curr_fast={curr_fast:.2f}, curr_slow={curr_slow:.2f}",
+                "DEBUG",
+            )
+            self._log(
+                f"Condition evaluation [{self.strategy_id}]: entry = {bool(cross_under)} — [SHORT] fast_sma{self.short} crossunder slow_sma{self.long} -> prev_fast={prev_fast:.2f}, prev_slow={prev_slow:.2f}, curr_fast={curr_fast:.2f}, curr_slow={curr_slow:.2f}",
+                "DEBUG",
+            )
+        except Exception:
+            pass
+
+        # Emit structured evaluations for both LONG and SHORT checks
+        if self.trading_logger:
+            try:
+                self.trading_logger.log_condition_evaluation(
+                    self.strategy_id,
+                    'entry',
+                    cross_over,
+                    {
+                        'side': 'LONG',
+                        'indicator': 'sma_crossover',
+                        'prev_fast_sma': prev_fast,
+                        'prev_slow_sma': prev_slow,
+                        'curr_fast_sma': curr_fast,
+                        'curr_slow_sma': curr_slow,
+                        'operator': 'crossover',
+                        'fast_period': self.fast_period,
+                        'slow_period': self.slow_period,
+                    }
+                )
+                self.trading_logger.log_condition_evaluation(
+                    self.strategy_id,
+                    'entry',
+                    cross_under,
+                    {
+                        'side': 'SHORT',
+                        'indicator': 'sma_crossunder',
+                        'prev_fast_sma': prev_fast,
+                        'prev_slow_sma': prev_slow,
+                        'curr_fast_sma': curr_fast,
+                        'curr_slow_sma': curr_slow,
+                        'operator': 'crossunder',
+                        'fast_period': self.fast_period,
+                        'slow_period': self.slow_period,
+                    }
+                )
+            except Exception:
+                pass
+
+        if cross_over:
+            result = True
+            self._entry_signal_side = 'LONG'
+            self._log(f"Entry signal: Fast SMA crossed ABOVE Slow SMA (LONG)", "INFO")
+        elif cross_under:
+            result = True
+            self._entry_signal_side = 'SHORT'
+            self._log(f"Entry signal: Fast SMA crossed BELOW Slow SMA (SHORT)", "INFO")
+        else:
+            self._log("No SMA crossover entry signal", "DEBUG")
+        
+        # Log condition evaluation to structured log
+        if self.trading_logger:
+            condition_details = {
+                'fast_sma': curr_fast,
+                'slow_sma': curr_slow,
+                'prev_fast_sma': prev_fast,
+                'prev_slow_sma': prev_slow,
+                'fast_period': self.fast_period,
+                'slow_period': self.slow_period,
+                'result': result
+            }
+            try:
+                self.trading_logger.log_condition_evaluation(
+                    self.strategy_id,
+                    'entry',
+                    result,
+                    condition_details
+                )
+            except Exception as e:
+                self._log(f"Error logging condition: {str(e)}", "ERROR")
         return result
     
     def _check_exit_conditions(self):
         """Check exit conditions including crossover"""
-        # Check for crossunder
-        fast_sma = self.indicators.get("fast_sma")
-        slow_sma = self.indicators.get("slow_sma")
-        
-        if fast_sma and slow_sma:
-            if fast_sma.current_value is not None and slow_sma.current_value is not None:
-                if len(fast_sma.values) >= 2 and len(slow_sma.values) >= 2:
-                    prev_fast = fast_sma.values[-2]
-                    prev_slow = slow_sma.values[-2]
-                    curr_fast = fast_sma.values[-1]
-                    curr_slow = slow_sma.values[-1]
-                    
-                    # Log current SMA state
-                    self._log(f"Exit check (SMA crossunder): Fast SMA={curr_fast:.2f} (prev={prev_fast:.2f}), Slow SMA={curr_slow:.2f} (prev={prev_slow:.2f})", "DEBUG")
-                    # Decide exit crossover depending on current side
-                    # If currently LONG -> exit on crossunder; if SHORT -> exit on crossover
-                    want_crossunder = (self.position_is_long is not False)
-                    crossunder = prev_fast >= prev_slow and curr_fast < curr_slow
-                    crossover = prev_fast <= prev_slow and curr_fast > curr_slow
-                    exit_on_signal = crossunder if want_crossunder else crossover
-                    # Human-readable evaluation for both sides
-                    self._log(f"MA exit eval: want={'LONG' if want_crossunder else 'SHORT'} -> crossunder={crossunder}, crossover={crossover}", "DEBUG")
-                    if self.trading_logger:
-                        try:
-                            self.trading_logger.log_condition_evaluation(
-                                self.strategy_id,
-                                'exit',
-                                exit_on_signal,
-                                {
-                                    'side': 'LONG' if want_crossunder else 'SHORT',
-                                    'indicator': 'sma_cross',
-                                    'fast_period': self.fast_period,
-                                    'slow_period': self.slow_period,
-                                    'prev_fast_sma': prev_fast,
-                                    'prev_slow_sma': prev_slow,
-                                    'curr_fast_sma': curr_fast,
-                                    'curr_slow_sma': curr_slow,
-                                    'operator': 'crossunder' if want_crossunder else 'crossover',
-                                    'threshold': 0.0,
-                                }
-                            )
-                            # Also emit explicit other side evaluation for completeness
-                            self.trading_logger.log_condition_evaluation(
-                                self.strategy_id,
-                                'exit',
-                                crossover if want_crossunder else crossunder,
-                                {
-                                    'side': 'SHORT' if want_crossunder else 'LONG',
-                                    'indicator': 'sma_cross',
-                                    'fast_period': self.fast_period,
-                                    'slow_period': self.slow_period,
-                                    'prev_fast_sma': prev_fast,
-                                    'prev_slow_sma': prev_slow,
-                                    'curr_fast_sma': curr_fast,
-                                    'curr_slow_sma': curr_slow,
-                                    'operator': 'crossover' if want_crossunder else 'crossunder',
-                                    'threshold': 0.0,
-                                }
-                            )
-                        except Exception as e:
-                            self._log(f"Error logging exit condition: {str(e)}", "ERROR")
-                    if exit_on_signal:
-                        self._log("Exit signal: SMA cross exit triggered", "INFO")
-                        from .base import ExitReason
-                        return ExitReason.SIGNAL
+        # Check for cross under/over using TA-Lib SMA
+        self._append_from_current()
+        df = self._as_df()
+        if df is None or len(df) < max(self.fast_period, self.slow_period) + 2:
+            return None
+        close = df['close']
+        fast_arr = talib.SMA(close, timeperiod=self.fast_period)
+        slow_arr = talib.SMA(close, timeperiod=self.slow_period)
+        prev_fast, curr_fast = float(fast_arr.iloc[-2]), float(fast_arr.iloc[-1])
+        prev_slow, curr_slow = float(slow_arr.iloc[-2]), float(slow_arr.iloc[-1])
+
+        # Log current SMA state
+        self._log(f"Exit check (SMA crossunder): Fast SMA={curr_fast:.2f} (prev={prev_fast:.2f}), Slow SMA={curr_slow:.2f} (prev={prev_slow:.2f})", "DEBUG")
+        # Decide exit crossover depending on current side
+        # If currently LONG -> exit on crossunder; if SHORT -> exit on crossover
+        want_crossunder = (self.position_is_long is not False)
+        crossunder = prev_fast >= prev_slow and curr_fast < curr_slow
+        crossover = prev_fast <= prev_slow and curr_fast > curr_slow
+        exit_on_signal = crossunder if want_crossunder else crossover
+        # Human-readable evaluation for both sides
+        self._log(f"MA exit eval: want={'LONG' if want_crossunder else 'SHORT'} -> crossunder={crossunder}, crossover={crossover}", "DEBUG")
+        if self.trading_logger:
+            try:
+                self.trading_logger.log_condition_evaluation(
+                    self.strategy_id,
+                    'exit',
+                    exit_on_signal,
+                    {
+                        'side': 'LONG' if want_crossunder else 'SHORT',
+                        'indicator': 'sma_cross',
+                        'fast_period': self.fast_period,
+                        'slow_period': self.slow_period,
+                        'prev_fast_sma': prev_fast,
+                        'prev_slow_sma': prev_slow,
+                        'curr_fast_sma': curr_fast,
+                        'curr_slow_sma': curr_slow,
+                        'operator': 'crossunder' if want_crossunder else 'crossover',
+                        'threshold': 0.0,
+                    }
+                )
+                # Also emit explicit other side evaluation for completeness
+                self.trading_logger.log_condition_evaluation(
+                    self.strategy_id,
+                    'exit',
+                    crossover if want_crossunder else crossunder,
+                    {
+                        'side': 'SHORT' if want_crossunder else 'LONG',
+                        'indicator': 'sma_cross',
+                        'fast_period': self.fast_period,
+                        'slow_period': self.slow_period,
+                        'prev_fast_sma': prev_fast,
+                        'prev_slow_sma': prev_slow,
+                        'curr_fast_sma': curr_fast,
+                        'curr_slow_sma': curr_slow,
+                        'operator': 'crossover' if want_crossunder else 'crossunder',
+                        'threshold': 0.0,
+                    }
+                )
+            except Exception as e:
+                self._log(f"Error logging exit condition: {str(e)}", "ERROR")
+        if exit_on_signal:
+            self._log("Exit signal: SMA cross exit triggered", "INFO")
+            from .base import ExitReason
+            return ExitReason.SIGNAL
         
         # Check stop loss and take profit (side-aware)
         if self.position_entry_price and self.current_price:
@@ -858,7 +858,7 @@ class MovingAverageCrossoverStrategy(BaseStrategy):
         return self.current_price * (1 + self.take_profit_pct)
 
 
-class RSIStrategy(BaseStrategy):
+class RSIStrategy(_OHLCVBufferMixin, BaseStrategy):
     """RSI-based mean reversion strategy"""
     
     def __init__(
@@ -867,7 +867,7 @@ class RSIStrategy(BaseStrategy):
         symbol: str,
         rsi_period: int = 14,
         oversold_threshold: float = 30.0,
-        overbought_threshold: float = 70.0,
+        overbought_threshold: float = 70.0, 
         quantity: int = 1,
         stop_loss_pct: float = 0.02,
         take_profit_pct: float = 0.03,
@@ -913,24 +913,28 @@ class RSIStrategy(BaseStrategy):
             quantity=quantity,
             initial_capital=initial_capital
         )
+        self._init_buffer()
     
     def _initialize_indicators(self):
-        """Initialize RSI indicator"""
-        self.indicators["rsi"] = RSI(self.rsi_period)
+        # Using TA-Lib RSI via buffer; no indicator objects needed
+        pass
 
     def _check_entry_conditions(self) -> bool:
         """Enter LONG on oversold; enter SHORT on overbought."""
-        rsi = self.indicators.get("rsi")
-        if not rsi or rsi.current_value is None:
+        # Append from current OHLCV and compute RSI via TA-Lib
+        self._append_from_current()
+        df = self._as_df()
+        if df is None or len(df) < self.rsi_period + 2:
             if self.trading_logger:
                 try:
                     self.trading_logger.log_condition_evaluation(self.strategy_id, 'entry', False, {
-                        'indicator': 'rsi', 'reason': 'not_ready', 'rsi': getattr(rsi, 'current_value', None)
+                        'indicator': 'rsi', 'reason': 'insufficient_data', 'have': int(len(df) if df is not None else 0), 'need': int(self.rsi_period + 2)
                     })
                 except Exception:
                     pass
             return False
-        val = rsi.current_value
+        rsi_series = talib.RSI(df['close'], timeperiod=self.rsi_period)
+        val = float(rsi_series.iloc[-1])
         go_long = val < self.oversold_threshold
         go_short = val > self.overbought_threshold
         self._log(f"RSI entry check: rsi={val:.2f}, LONG(val<oversold)={go_long}, SHORT(val>overbought)={go_short}", "DEBUG")
@@ -955,9 +959,12 @@ class RSIStrategy(BaseStrategy):
 
     def _check_exit_conditions(self):
         """Exit LONG when RSI > overbought; exit SHORT when RSI < oversold; also apply SL/TP from base."""
-        rsi = self.indicators.get("rsi")
-        if rsi and rsi.current_value is not None:
-            val = rsi.current_value
+        # Compute RSI using TA-Lib over buffer for exit checks
+        self._append_from_current()
+        df = self._as_df()
+        if df is not None and len(df) >= self.rsi_period + 2:
+            rsi_series = talib.RSI(df['close'], timeperiod=self.rsi_period)
+            val = float(rsi_series.iloc[-1])
             exit_long = (self.position_is_long is not False) and (val > self.overbought_threshold)
             exit_short = (self.position_is_long is False) and (val < self.oversold_threshold)
             result = exit_long or exit_short

@@ -86,6 +86,8 @@ class BaseStrategy(ABC):
         
         # Initialize indicators
         self._initialize_indicators()
+        # Prevent duplicate entry orders before fills are processed
+        self._entry_inflight: bool = False
     
     @abstractmethod
     def _initialize_indicators(self):
@@ -165,8 +167,8 @@ class BaseStrategy(ABC):
             else:
                 self._log(f"Skipping exit check (has_position=False)", "DEBUG")
             
-            # Check entry conditions (if not in position)
-            if not self.has_position:
+            # Check entry conditions (if not in position and no inflight entry)
+            if not self.has_position and not getattr(self, '_entry_inflight', False):
                 self._log(f"Checking entry conditions (has_position=False)", "DEBUG")
                 if self._check_entry_conditions():
                     self._log(f"Entry conditions met, generating entry order", "INFO")
@@ -179,7 +181,7 @@ class BaseStrategy(ABC):
                 else:
                     self._log(f"Entry conditions not met, waiting", "DEBUG")
             else:
-                self._log(f"Skipping entry check (has_position=True)", "DEBUG")
+                self._log(f"Skipping entry check (has_position={self.has_position}, inflight={getattr(self, '_entry_inflight', False)})", "DEBUG")
         
         elif isinstance(data, TickData):
             self._log(f"Received Tick data: {data.symbol} price={data.price:.2f}", "DEBUG")
@@ -601,6 +603,8 @@ class BaseStrategy(ABC):
             take_profit=take_profit
         )
         
+        # Mark inflight immediately to avoid duplicate submissions in the same tick
+        self._entry_inflight = True
         if self.order_callback:
             self._log(f"Calling order callback to submit entry order", "DEBUG")
             self.order_callback(order)

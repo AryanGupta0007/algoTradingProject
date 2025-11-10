@@ -6,6 +6,9 @@ import numpy as np
 import pandas as pd
 from typing import List, Optional, Dict
 from .base import Indicator
+import logging
+
+logger = logging.getLogger("TradingSystem")
 
 
 class TALibIndicator(Indicator):
@@ -36,7 +39,25 @@ class TALibIndicator(Indicator):
             self.prices = self.prices[-max_length:]
             self.volumes = self.volumes[-max_length:]
         
-        return self._calculate()
+        value = self._calculate()
+        try:
+            details: Dict[str, Optional[float]] = {"value": getattr(self, "current_value", None)}
+            if hasattr(self, "upper_band"):
+                details.update({
+                    "upper_band": getattr(self, "upper_band", None),
+                    "middle_band": getattr(self, "middle_band", None),
+                    "lower_band": getattr(self, "lower_band", None),
+                })
+            if hasattr(self, "macd_line"):
+                details.update({
+                    "macd": getattr(self, "macd_line", None),
+                    "signal": getattr(self, "signal_line", None),
+                    "histogram": getattr(self, "histogram", None),
+                })
+            logger.debug(f"[INDICATOR] {self.name} last OHLCV: O={open:.2f} H={high:.2f} L={low:.2f} C={close:.2f} V={volume} | details={details}")
+        except Exception:
+            pass
+        return value
     
     def update(self, price: float) -> Optional[float]:
         """Update with price only (uses price for OHLC)"""
@@ -92,7 +113,16 @@ class SMA(TALibIndicator):
         """Calculate SMA from DataFrame"""
         np_close = df['close'].values.astype(float)
         result = talib.SMA(np_close, timeperiod=self.period)
-        return pd.Series(result, index=df.index)
+        s = pd.Series(result, index=df.index)
+        try:
+            last = df.iloc[-1]
+            ts = getattr(df.index, "__getitem__", lambda x: None)(-1)
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            last_val = s.iloc[-1]
+            logger.debug(f"[INDICATOR] SMA({self.period}) DF last row: t={ts_str} O={last.get('open', np.nan):.2f} H={last.get('high', np.nan):.2f} L={last.get('low', np.nan):.2f} C={last['close']:.2f} V={last.get('volume', 0)} | value={None if pd.isna(last_val) else float(last_val)}")
+        except Exception:
+            pass
+        return s
 
 
 class EMA(TALibIndicator):
@@ -116,7 +146,16 @@ class EMA(TALibIndicator):
         """Calculate EMA from DataFrame"""
         np_close = df['close'].values.astype(float)
         result = talib.EMA(np_close, timeperiod=self.period)
-        return pd.Series(result, index=df.index)
+        s = pd.Series(result, index=df.index)
+        try:
+            last = df.iloc[-1]
+            ts = getattr(df.index, "__getitem__", lambda x: None)(-1)
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            last_val = s.iloc[-1]
+            logger.debug(f"[INDICATOR] EMA({self.period}) DF last row: t={ts_str} O={last.get('open', np.nan):.2f} H={last.get('high', np.nan):.2f} L={last.get('low', np.nan):.2f} C={last['close']:.2f} V={last.get('volume', 0)} | value={None if pd.isna(last_val) else float(last_val)}")
+        except Exception:
+            pass
+        return s
 
 
 class RSI(TALibIndicator):
@@ -140,7 +179,16 @@ class RSI(TALibIndicator):
         """Calculate RSI from DataFrame"""
         np_close = df['close'].values.astype(float)
         result = talib.RSI(np_close, timeperiod=self.period)
-        return pd.Series(result, index=df.index)
+        s = pd.Series(result, index=df.index)
+        try:
+            last = df.iloc[-1]
+            ts = getattr(df.index, "__getitem__", lambda x: None)(-1)
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            last_val = s.iloc[-1]
+            logger.debug(f"[INDICATOR] RSI({self.period}) DF last row: t={ts_str} O={last.get('open', np.nan):.2f} H={last.get('high', np.nan):.2f} L={last.get('low', np.nan):.2f} C={last['close']:.2f} V={last.get('volume', 0)} | value={None if pd.isna(last_val) else float(last_val)}")
+        except Exception:
+            pass
+        return s
 
 
 class MACD(TALibIndicator):
@@ -185,11 +233,22 @@ class MACD(TALibIndicator):
             slowperiod=self.slow_period,
             signalperiod=self.signal_period
         )
-        return {
+        out = {
             'macd': pd.Series(macd, index=df.index),
             'signal': pd.Series(signal, index=df.index),
             'histogram': pd.Series(histogram, index=df.index)
         }
+        try:
+            last = df.iloc[-1]
+            ts = getattr(df.index, "__getitem__", lambda x: None)(-1)
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            m = out['macd'].iloc[-1]
+            s = out['signal'].iloc[-1]
+            h = out['histogram'].iloc[-1]
+            logger.debug(f"[INDICATOR] MACD({self.fast_period},{self.slow_period},{self.signal_period}) DF last row: t={ts_str} O={last.get('open', np.nan):.2f} H={last.get('high', np.nan):.2f} L={last.get('low', np.nan):.2f} C={last['close']:.2f} V={last.get('volume', 0)} | macd={None if pd.isna(m) else float(m)} signal={None if pd.isna(s) else float(s)} histogram={None if pd.isna(h) else float(h)}")
+        except Exception:
+            pass
+        return out
     
     def calculate(self, prices: pd.Series) -> pd.Series:
         """Calculate MACD histogram for compatibility"""
@@ -244,9 +303,19 @@ class BB(TALibIndicator):
             nbdevup=self.nbdevup,
             nbdevdn=self.nbdevdn
         )
-        return {
+        out = {
             'upper': pd.Series(upper, index=df.index),
             'middle': pd.Series(middle, index=df.index),
             'lower': pd.Series(lower, index=df.index)
         }
-
+        try:
+            last = df.iloc[-1]
+            ts = getattr(df.index, "__getitem__", lambda x: None)(-1)
+            ts_str = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts)
+            u = out['upper'].iloc[-1]
+            m = out['middle'].iloc[-1]
+            l = out['lower'].iloc[-1]
+            logger.debug(f"[INDICATOR] BB({self.period},{self.nbdevup},{self.nbdevdn}) DF last row: t={ts_str} O={last.get('open', np.nan):.2f} H={last.get('high', np.nan):.2f} L={last.get('low', np.nan):.2f} C={last['close']:.2f} V={last.get('volume', 0)} | upper={None if pd.isna(u) else float(u)} middle={None if pd.isna(m) else float(m)} lower={None if pd.isna(l) else float(l)}")
+        except Exception:
+            pass
+        return out

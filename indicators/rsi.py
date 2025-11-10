@@ -4,6 +4,10 @@ Relative Strength Index (RSI) indicator.
 import pandas as pd
 from typing import List, Optional
 from .base import Indicator
+import logging
+import math
+
+logger = logging.getLogger("TradingSystem")
 
 
 class RSI(Indicator):
@@ -52,6 +56,10 @@ class RSI(Indicator):
             
             self.values.append(self.current_value)
             self.prev_price = price
+            try:
+                logger.debug(f"[INDICATOR] RSI({self.period}) last tick: O={math.nan} H={math.nan} L={math.nan} C={price:.2f} V=0 | value={self.current_value}")
+            except Exception:
+                pass
             return self.current_value
         
         self.prev_price = price
@@ -65,6 +73,13 @@ class RSI(Indicator):
         
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
+        try:
+            last_close = prices.iloc[-1]
+            last_val = rsi.iloc[-1]
+            # No OHLCV dataframe here, so log close as C and others as NaN
+            logger.debug(f"[INDICATOR] RSI({self.period}) DF last row: O={math.nan} H={math.nan} L={math.nan} C={float(last_close):.2f} V=0 | value={None if pd.isna(last_val) else float(last_val)}")
+        except Exception:
+            pass
         return rsi
     
     def reset(self):

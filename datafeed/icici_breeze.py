@@ -58,7 +58,7 @@ class ICICIBreezeDataFeed(DataFeed):
         self.sio_token: Optional[str] = None
         self.sio_connected = False
 
-    def fetch_historical(self, symbol: str, timeframe: str = '1min', limit: int = 30):
+    def fetch_historical(self, symbol: str, timeframe: str = '1min', limit: int = 150):
         """Fetch real historical 1-minute bars directly via Breeze SDK if available.
 
         - Maps symbol -> code using ICICIFULL.csv ("ExchangeCode" -> "ShortName").
@@ -274,13 +274,23 @@ class ICICIBreezeDataFeed(DataFeed):
 
         # Connect Socket.IO if needed
         if self.sio and not self.sio_connected:
+            # Preflight check: correct websocket-client installed
             try:
+                import websocket as _ws  # provided by websocket-client
+                _ = getattr(_ws, 'WebSocketException')
+            except Exception as dep_err:
+                logger.error(
+                    "Socket.IO websocket dependency issue: ensure 'websocket-client' is installed and no conflicting 'websocket' package exists. "
+                    f"Error: {dep_err}"
+                )
+                # Proceed anyway; engineio can fallback to polling
+            try:
+                # Do not force transports; allow polling fallback if websocket not available
                 self.sio.connect(
                     self.socket_base_url,
                     socketio_path=self.socket_path,
                     headers={"User-Agent": "python-socketio[client]/socket"},
                     auth={"user": self.sio_user, "token": self.sio_token},
-                    transports=["websocket"],
                 )
                 # Connection event handler will emit joins for all known tokens
             except Exception as e:
